@@ -5,7 +5,7 @@
 
 // --- Categorías de video ---
 
-export type VideoCategory = "biblica" | "moraleja";
+export type VideoCategory = "biblica" | "moraleja" | "versiculo";
 
 /** Género de voz para la categoría MORALEJA (diálogos). */
 export type VoiceGender = "hombre" | "mujer";
@@ -120,12 +120,15 @@ export interface RemotionInputProps {
     startSec: number;
     durationSec: number;
   }[];
+  /** Ruta de la música de fondo (opcional, volumen ~10%). */
+  musicPath?: string;
   totalDurationSec: number;
   /** metadatos para el footer / marca de agua opcional */
   meta?: {
     title: string;
     theme: string;
     category: VideoCategory;
+    channelName?: string;
   };
   /** index signature para compatibilidad con Record<string, unknown> de Remotion */
   [key: string]: unknown;
@@ -168,4 +171,78 @@ export interface VoiceOption {
   id: string;
   label: string;
   description: string;
+}
+
+// ============================================================
+//  Tipos para CLIP EMOTIVO
+// ============================================================
+
+/** Análisis emocional devuelto por Groq / visión. */
+export interface EmotionalAnalysis {
+  /** Título de impacto generado para el clip. */
+  title: string;
+  /** Inicio del segmento más emotivo en segundos. */
+  startTime: number;
+  /** Fin del segmento más emotivo en segundos. */
+  endTime: number;
+  /** Duración del segmento (siempre ≤ 60s). */
+  durationSec: number;
+  /** Resumen del momento emocional. */
+  summary: string;
+  /** Sugerencia de color grading. */
+  colorGrading: {
+    brightness?: number; // -1..1
+    contrast?: number; // 0..2
+    saturation?: number; // 0..3
+    warmth?: number; // 0..2
+  };
+}
+
+/** Datos que el Remotion Player necesita para renderizar un clip emotivo. */
+export interface ClipEmotivoInputProps {
+  /** Ruta del clip recortado: /assets/videos/clip_<id>.mp4 */
+  videoPath: string;
+  /** Ruta de la música de fondo: /assets/music/track_<n>.mp3 */
+  musicPath: string;
+  /** Título de impacto. */
+  title: string;
+  /** Subtítulos Popis del segmento. */
+  subtitles: PopisSubtitle[];
+  /** Duración total del clip final en segundos. */
+  totalDurationSec: number;
+  /** Ajustes de color grading aplicados vía CSS filters. */
+  colorGrading: EmotionalAnalysis["colorGrading"];
+  /** metadatos */
+  meta?: {
+    category: "clip-emotivo";
+    originalFilename: string;
+  };
+  /** index signature para Remotion */
+  [key: string]: unknown;
+}
+
+/** Configuración del Player para clips emotivos. */
+export interface ClipEmotivoPlayerConfig {
+  compositionName: "ClipVideo";
+  durationInFrames: number;
+  fps: number;
+  width: number;
+  height: number;
+  inputProps: ClipEmotivoInputProps;
+}
+
+/** Proyecto completo de clip emotivo. */
+export interface ClipEmotivoProject {
+  id: string;
+  createdAt: string;
+  analysis: EmotionalAnalysis;
+  /** Ruta del video original subido. */
+  originalPath: string;
+  /** Ruta del clip recortado con música. */
+  finalClipPath: string;
+  /** Ruta del clip solo (sin música, para subtítulos). */
+  trimmedClipPath: string;
+  musicPath: string;
+  subtitles: PopisSubtitle[];
+  playerConfig: ClipEmotivoPlayerConfig;
 }

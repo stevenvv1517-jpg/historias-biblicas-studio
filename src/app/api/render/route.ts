@@ -1,13 +1,20 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { publicToDisk, projectRoot } from "@/lib/paths";
-import type { RemotionInputProps } from "@/lib/types";
+import { uploadToB2, getB2Config } from "@/lib/b2";
+import { addToHistory } from "@/lib/history";
+import type { RemotionInputProps, ClipEmotivoInputProps } from "@/lib/types";
 
 export const runtime = "nodejs";
+
+const FFMPEG_DIR = path.join(projectRoot, "node_modules", "@ffmpeg-installer", "win32-x64");
+process.env.PATH = `${FFMPEG_DIR}${path.delimiter}${process.env.PATH}`;
 export const maxDuration = 600;
 
 let cachedServeUrl: string | null = null;
@@ -29,7 +36,6 @@ async function syncAssetsToBundle(serveUrl: string) {
   } catch {
     bundleFile = serveUrl;
   }
-  // Si apunta directo a index.html, tomamos su directorio padre
   const bundleDir = bundleFile.endsWith("index.html")
     ? path.dirname(bundleFile)
     : bundleFile.replace(/[/\\]$/, "");
@@ -54,8 +60,14 @@ async function syncAssetsToBundle(serveUrl: string) {
 }
 
 interface RenderBody {
-  inputProps: RemotionInputProps;
+  inputProps: RemotionInputProps | ClipEmotivoInputProps;
   totalDurationSec: number;
+  compositionId?: string;
+}
+
+async function getUserEmail(): Promise<string | undefined> {
+  const session = await getServerSession(authOptions);
+  return session?.user?.email ?? undefined;
 }
 
 export async function POST(req: Request) {
@@ -83,10 +95,11 @@ export async function POST(req: Request) {
 
     await syncAssetsToBundle(serveUrl);
 
-    console.log("[/api/render] seleccionando composición MainVideo…");
+    const compositionId = body.compositionId ?? "MainVideo";
+    console.log(`[/api/render] seleccionando composición ${compositionId}…`);
     const composition = await selectComposition({
       serveUrl,
-      id: "MainVideo",
+      id: compositionId,
       inputProps: body.inputProps as any,
     });
 
@@ -114,9 +127,52 @@ export async function POST(req: Request) {
     });
     process.stdout.write("\n");
 
+    // ---- Subir a Backblaze B2 (bucket privado) ----
+    let b2Uploaded = false;
+    const meta = body.inputProps?.meta as Record<string, unknown> | undefined;
+    const title = (meta?.title as string) ?? videoId;
+    const category = (meta?.category as string) ?? "biblica";
+    const scenes = (body.inputProps as any)?.scenes?.length ?? 0;
+    const subtitles = (body.inputProps as any)?.subtitles?.length ?? 0;
+    const remoteKey = `videos/${videoId}.mp4`;
+
+    try {
+      getB2Config();
+      await uploadToB2(outputDiskPath, remoteKey);
+      b2Uploaded = true;
+      console.log(`[/api/render] subido a B2: ${remoteKey}`);
+    } catch (b2Err: any) {
+      console.warn("[/api/render] B2 no configurado, saltando subida:", b2Err?.message);
+    }
+
+    // ---- Guardar en historial ----
+    const userEmail = await getUserEmail();
+    if (b2Uploaded) {
+      try {
+        await addToHistory(
+          {
+            id: videoId,
+            title,
+            category,
+            createdAt: new Date().toISOString(),
+            durationSec: body.totalDurationSec,
+            scenes,
+            subtitles,
+            remoteKey,
+            b2Url: "",
+            localPath: outputPublicPath,
+          },
+          userEmail
+        );
+      } catch (histErr: any) {
+        console.warn("[/api/render] Error guardando historial:", histErr?.message);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       videoPath: outputPublicPath,
+      b2Uploaded,
       videoId,
       frames: durationInFrames,
       fps,

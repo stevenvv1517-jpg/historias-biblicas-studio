@@ -20,21 +20,23 @@ import type {
   DialogueBlock,
   VideoCategory,
 } from "@/lib/types";
-import { synthesizeLmnt } from "@/lib/clients/lmnt";
+import { synthesizeCloudflareTTS, synthesizeInworld } from "@/lib/clients/cloudflare-tts";
 import { transcribeDeepgram } from "@/lib/clients/deepgram";
 import { generateFluxImage } from "@/lib/clients/cloudflare";
-import { planBiblicalVideo } from "@/lib/clients/groq";
+import { planBiblicalVideo, planVersiculo } from "@/lib/clients/groq";
+import { fetchNatureVideo } from "@/lib/clients/pexels";
 import { publicToDisk } from "@/lib/paths";
 import { concatenateMp3s, getMp3Duration } from "@/lib/audio";
+import { listMusicFiles } from "@/lib/video-utils";
 
 // Forzamos runtime Node para poder usar fs y fetch nativo.
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 min: las llamadas a IA tardan.
 
-// Mapa de voces LMNT por género
+// Voces Cloudflare: Aura-2 para bíblicas, Inworld para moralejas
 const VOICE_MAP: Record<"hombre" | "mujer", string> = {
-  hombre: "marcus",
-  mujer: "lily",
+  hombre: "Dennis",
+  mujer: "Claire",
 };
 
 // Catálogo de SFX (mapeo label -> ruta)
@@ -78,7 +80,6 @@ interface PipelineBody {
   topic: string;
   category?: VideoCategory;
   voice?: string;
-  sceneCount?: number;
   speed?: number;
 }
 
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { topic, category = "biblica", voice, sceneCount = 6, speed = 1 } = body;
+  const { topic, category = "biblica", voice, speed = 1 } = body;
 
   if (!topic || typeof topic !== "string" || topic.trim().length < 3) {
     return NextResponse.json(
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
   }
 
   const isMoraleja = category === "moraleja";
+  const isVersiculo = category === "versiculo";
   const projectId = generateProjectId();
   const createdAt = new Date().toISOString();
 
@@ -107,19 +109,45 @@ export async function POST(req: Request) {
     // ==================================================================
     //  0) PLAN (Groq)
     // ==================================================================
-    const plan = await planBiblicalVideo({ topic, sceneCount, category });
+    const plan = isVersiculo
+      ? await planVersiculo({ topic })
+      : await planBiblicalVideo({ topic, category });
     const totalDurationSec = 0; // se calcula tras audio
 
     // ==================================================================
-    //  1) AUDIO (LMNT) + concatenación
+    //  1) AUDIO (Cloudflare TTS) + concatenación
+    //   BÍBLICA  → Deepgram Aura-2 Español
+    //   MORALEJA → Inworld TTS 2 (voces por género)
+    //   VERSÍCULO → Aura-2 Español
     // ==================================================================
     let audioPublicPath = `/assets/audio/${projectId}.mp3`;
     let audioDurationSec = 0;
     let audioClips: { path: string; startSec: number; durationSec: number }[] = [];
     let dialogues: DialogueBlock[][] = [];
+    // Para VERSÍCULO: datos adicionales
+    let verseText = "";
+    let verseReference = "";
+    let reflection = "";
+    let natureVideoUrl = "";
 
-    if (isMoraleja) {
-      // --- MORALEJA: sintetizar cada diálogo por separado ---
+    if (isVersiculo) {
+      // --- VERSÍCULO: extraer datos y sintetizar audio con Aura-2 ---
+      verseText = (plan as any).verseReference ? (plan as any).verseText || "" : "";
+      verseReference = (plan as any).verseReference || "";
+      reflection = (plan as any).scenes?.[0]?.reflection || (plan as any).fullNarration || "";
+
+      await synthesizeCloudflareTTS({
+        text: plan.fullNarration,
+        category: "biblica",
+        outputPath: publicToDisk(audioPublicPath),
+      });
+      audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
+
+      // Buscar video de naturaleza en Pexels
+      const pexelVideo = await fetchNatureVideo();
+      natureVideoUrl = pexelVideo.url;
+    } else if (isMoraleja) {
+      // --- MORALEJA: sintetizar cada diálogo por separado con Inworld ---
       const sceneAudioPaths: string[] = [];
 
       for (let i = 0; i < plan.scenes.length; i++) {
@@ -130,13 +158,12 @@ export async function POST(req: Request) {
 
         if (scenePlan.dialogues && scenePlan.dialogues.length > 0) {
           for (const d of scenePlan.dialogues) {
-            const voiceId = process.env.LMNT_VOICE_ID?.trim() || VOICE_MAP[d.gender] || "marcus";
+            const voiceId = VOICE_MAP[d.gender] || "Dennis";
             const dialoguePath = `/assets/audio/${projectId}_scene${i}_${d.character.toLowerCase().replace(/\s+/g, "_")}.mp3`;
 
-            const result = await synthesizeLmnt({
+            const result = await synthesizeInworld({
               text: d.line,
-              voice: voiceId,
-              format: "mp3",
+              voiceId,
               speed,
               outputPath: publicToDisk(dialoguePath),
             });
@@ -155,19 +182,16 @@ export async function POST(req: Request) {
             sceneCursor += result.durationSec;
           }
         } else {
-          // Fallback: narración simple si Groq no generó diálogos
           const fallbackPath = `/assets/audio/${projectId}_scene${i}_narration.mp3`;
-          const result = await synthesizeLmnt({
+          const result = await synthesizeInworld({
             text: scenePlan.narration,
-            voice: process.env.LMNT_VOICE_ID?.trim() || voice || "marcus",
-            format: "mp3",
+            voiceId: "Dennis",
             speed,
             outputPath: publicToDisk(fallbackPath),
           });
           scenePaths.push(fallbackPath);
         }
 
-        // Concatenar audio de la escena
         const sceneAudioPath = `/assets/audio/${projectId}_scene${i}_combined.mp3`;
         const concatResult = await concatenateMp3s(
           scenePaths.map((p) => ({ path: p })),
@@ -175,7 +199,6 @@ export async function POST(req: Request) {
         );
         sceneAudioPaths.push(sceneAudioPath);
 
-        // Acumular clips para Remotion
         for (const chunk of concatResult.chunks) {
           audioClips.push({
             path: chunk.path,
@@ -187,7 +210,6 @@ export async function POST(req: Request) {
         dialogues.push(sceneDialogueBlocks);
       }
 
-      // Concatenar todas las escenas en un audio final
       const finalAudioPath = `/assets/audio/${projectId}_final.mp3`;
       const finalConcat = await concatenateMp3s(
         sceneAudioPaths.map((p) => ({ path: p })),
@@ -196,7 +218,6 @@ export async function POST(req: Request) {
       audioPublicPath = finalAudioPath;
       audioDurationSec = finalConcat.chunks.reduce((sum, c) => sum + c.durationSec, 0);
 
-      // Recalcular offsets globales
       let globalCursor = 0;
       audioClips = [];
       for (const scenePath of sceneAudioPaths) {
@@ -205,13 +226,10 @@ export async function POST(req: Request) {
         globalCursor += dur;
       }
     } else {
-      // --- BÍBLICA: sintetizar narración completa ---
-      const resolvedVoice = process.env.LMNT_VOICE_ID?.trim() || voice || "marcus";
-      await synthesizeLmnt({
+      // --- BÍBLICA: sintetizar narración completa con Aura-2 Español ---
+      await synthesizeCloudflareTTS({
         text: plan.fullNarration,
-        voice: resolvedVoice,
-        format: "mp3",
-        speed,
+        category: "biblica",
         outputPath: publicToDisk(audioPublicPath),
       });
       audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
@@ -229,114 +247,182 @@ export async function POST(req: Request) {
     audioDurationSec = deepgramDuration || audioDurationSec;
 
     // ==================================================================
-    //  3) IMÁGENES (Flux) + ANIMATION + FX
+    //  3) ENSAMBLAR — rama VERSÍCULO vs BÍBLICA/MORALEJA
     // ==================================================================
-    // Construir escenas visuales con datos enriquecidos de Groq
-    const scenes: VisualScene[] = distributeScenesFromPlan(
-      audioDurationSec,
-      plan.scenes
-    ).map((s, i) => {
-      const planScene = plan.scenes[i];
-      const animations: VisualScene["animationSettings"]["motion"][] = [
-        "ken-burns-in", "pan-right", "ken-burns-out", "pan-left", "static",
-      ];
+    const musicFiles = await listMusicFiles().catch(() => []);
+    const musicPath = musicFiles.length > 0
+      ? musicFiles[Math.floor(Math.random() * musicFiles.length)]
+      : undefined;
 
-      // Usar animation de Groq si existe
-      const groqAnim = planScene.animation?.toLowerCase() || "";
-      let motion: VisualScene["animationSettings"]["motion"] = animations[i % animations.length];
-      if (groqAnim.includes("zoom") || groqAnim.includes("close")) motion = "ken-burns-in";
-      else if (groqAnim.includes("pan")) motion = groqAnim.includes("left") ? "pan-left" : "pan-right";
-      else if (groqAnim.includes("breath") || groqAnim.includes("blink") || groqAnim.includes("head")) motion = "static";
+    const channelName = process.env.CHANNEL_NAME?.trim() || "Canal Cristiano";
 
-      // FX sincronizados
-      const audioFx: AudioFX[] = (planScene.sfx || []).map((sfxItem, fi) => ({
-        id: `fx_${i}_${fi}`,
-        at: Number(sfxItem.at) || 0,
-        path: resolveSfxPath(sfxItem.label),
-        volume: 0.5,
-        label: sfxItem.label,
-      })).filter((fx) => fx.path.length > 0);
+    let project: VideoProject;
+    let stats: Record<string, any>;
 
-      return {
-        ...s,
-        promptAnimation: planScene.animation || "slow zoom",
-        animationSettings: {
-          motion,
-          intensity: 0.35,
-        },
-        audioFx,
-        dialogues: isMoraleja ? (dialogues[i] || []) : undefined,
-      };
-    });
-
-    // Generar imágenes Flux para cada escena
-    const fluxResults = await Promise.all(
-      scenes.map((scene) =>
-        generateFluxImage({
-          prompt: scene.promptFlux,
-          outputPath: publicToDisk(scene.localPath),
-        })
-      )
-    );
-
-    // ==================================================================
-    //  4) ENSAMBLAR RemotionPlayerConfig
-    // ==================================================================
-    const inputProps = buildInputProps(
-      scenes,
-      popisSubtitles,
-      audioPublicPath,
-      audioDurationSec,
-      { title: plan.title, theme: category },
-      isMoraleja ? audioClips : undefined
-    );
-
-    const remotionPlayerConfig: RemotionPlayerConfig = {
-      compositionName: "MainVideo",
-      durationInFrames: secondsToFrames(audioDurationSec),
-      fps: FPS,
-      width: VIDEO_WIDTH,
-      height: VIDEO_HEIGHT,
-      inputProps,
-    };
-
-    const renderConfig: RConfig = {
-      codec: "h264",
-      outputLocation: `/assets/videos/${projectId}.mp4`,
-      imageFormat: "jpeg",
-      crf: 18,
-      audioCodec: "aac",
-    };
-
-    const project: VideoProject = {
-      id: projectId,
-      createdAt,
-      category,
-      theme: category,
-      audioConfig: {
-        script: plan.fullNarration,
-        voice: process.env.LMNT_VOICE_ID?.trim() || voice || "marcus",
-        format: "mp3",
-        speed,
-        localPath: audioPublicPath,
-        durationSec: audioDurationSec,
-      },
-      subtitlesConfig: {
+    if (isVersiculo) {
+      // --- VERSÍCULO: sin Flux, con video de naturaleza Pexels + subtítulos ---
+      const versiculoInputProps = {
+        verseText,
+        verseReference,
+        reflection,
         audioPath: audioPublicPath,
-        model: "nova-2",
-        language: "es",
-        smart_format: true,
-        type: "popis",
-      },
-      visualScenes: scenes,
-      remotionPlayerConfig,
-      renderConfig,
-    };
+        videoUrl: natureVideoUrl,
+        musicPath,
+        totalDurationSec: audioDurationSec,
+        channelName,
+        subtitles: popisSubtitles,
+      };
 
-    return NextResponse.json({
-      ok: true,
-      project,
-      stats: {
+      const remotionPlayerConfig: RemotionPlayerConfig = {
+        compositionName: "VersiculoVideo",
+        durationInFrames: secondsToFrames(audioDurationSec),
+        fps: FPS,
+        width: VIDEO_WIDTH,
+        height: VIDEO_HEIGHT,
+        inputProps: versiculoInputProps as any,
+      };
+
+      const renderConfig: RConfig = {
+        codec: "h264",
+        outputLocation: `/assets/videos/${projectId}.mp4`,
+        imageFormat: "jpeg",
+        crf: 18,
+        audioCodec: "aac",
+      };
+
+      project = {
+        id: projectId,
+        createdAt,
+        category,
+        theme: category,
+        audioConfig: {
+          script: plan.fullNarration,
+          voice: "Aura-2",
+          format: "mp3",
+          speed,
+          localPath: audioPublicPath,
+          durationSec: audioDurationSec,
+        },
+        subtitlesConfig: {
+          audioPath: audioPublicPath,
+          model: "nova-2",
+          language: "es",
+          smart_format: true,
+          type: "popis",
+        },
+        visualScenes: [],
+        remotionPlayerConfig,
+        renderConfig,
+      };
+
+      stats = {
+        topic,
+        title: plan.title,
+        category,
+        durationSec: audioDurationSec,
+        scenes: 0,
+        subtitles: popisSubtitles.length,
+        words: words.length,
+        imagesGenerated: 0,
+        verseReference,
+      };
+    } else {
+      // --- BÍBLICA / MORALEJA: imágenes Flux + escenas ---
+      const scenes: VisualScene[] = distributeScenesFromPlan(
+        audioDurationSec,
+        plan.scenes
+      ).map((s, i) => {
+        const planScene = plan.scenes[i];
+        const animations: VisualScene["animationSettings"]["motion"][] = [
+          "ken-burns-in", "pan-right", "ken-burns-out", "pan-left", "static",
+        ];
+
+        const groqAnim = planScene.animation?.toLowerCase() || "";
+        let motion: VisualScene["animationSettings"]["motion"] = animations[i % animations.length];
+        if (groqAnim.includes("zoom") || groqAnim.includes("close")) motion = "ken-burns-in";
+        else if (groqAnim.includes("pan")) motion = groqAnim.includes("left") ? "pan-left" : "pan-right";
+        else if (groqAnim.includes("breath") || groqAnim.includes("blink") || groqAnim.includes("head")) motion = "static";
+
+        const audioFx: AudioFX[] = (planScene.sfx || []).map((sfxItem, fi) => ({
+          id: `fx_${i}_${fi}`,
+          at: Number(sfxItem.at) || 0,
+          path: resolveSfxPath(sfxItem.label),
+          volume: 0.5,
+          label: sfxItem.label,
+        })).filter((fx) => fx.path.length > 0);
+
+        return {
+          ...s,
+          promptAnimation: planScene.animation || "slow zoom",
+          animationSettings: { motion, intensity: 0.35 },
+          audioFx,
+          dialogues: isMoraleja ? (dialogues[i] || []) : undefined,
+        };
+      });
+
+      const fluxResults = await Promise.all(
+        scenes.map((scene) =>
+          generateFluxImage({
+            prompt: scene.promptFlux,
+            outputPath: publicToDisk(scene.localPath),
+          })
+        )
+      );
+
+      const inputProps = buildInputProps(
+        scenes,
+        popisSubtitles,
+        audioPublicPath,
+        audioDurationSec,
+        { title: plan.title, theme: category },
+        isMoraleja ? audioClips : undefined,
+        musicPath,
+        channelName
+      );
+
+      const remotionPlayerConfig: RemotionPlayerConfig = {
+        compositionName: "MainVideo",
+        durationInFrames: secondsToFrames(audioDurationSec),
+        fps: FPS,
+        width: VIDEO_WIDTH,
+        height: VIDEO_HEIGHT,
+        inputProps,
+      };
+
+      const renderConfig: RConfig = {
+        codec: "h264",
+        outputLocation: `/assets/videos/${projectId}.mp4`,
+        imageFormat: "jpeg",
+        crf: 18,
+        audioCodec: "aac",
+      };
+
+      project = {
+        id: projectId,
+        createdAt,
+        category,
+        theme: category,
+        audioConfig: {
+          script: plan.fullNarration,
+          voice: isMoraleja ? "Inworld" : "Aura-2",
+          format: "mp3",
+          speed,
+          localPath: audioPublicPath,
+          durationSec: audioDurationSec,
+        },
+        subtitlesConfig: {
+          audioPath: audioPublicPath,
+          model: "nova-2",
+          language: "es",
+          smart_format: true,
+          type: "popis",
+        },
+        visualScenes: scenes,
+        remotionPlayerConfig,
+        renderConfig,
+      };
+
+      stats = {
         topic,
         title: plan.title,
         category,
@@ -347,8 +433,10 @@ export async function POST(req: Request) {
         imagesGenerated: fluxResults.length,
         dialoguesTotal: isMoraleja ? dialogues.flat().length : 0,
         audioClips: audioClips.length,
-      },
-    });
+      };
+    }
+
+    return NextResponse.json({ ok: true, project, stats });
   } catch (err: any) {
     console.error("[/api/pipeline] error:", err);
     return NextResponse.json(

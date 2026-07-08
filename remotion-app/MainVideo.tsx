@@ -21,6 +21,7 @@ export const MainVideo: React.FC<RemotionInputProps> = ({
   audioPath,
   totalDurationSec,
   audioClips,
+  musicPath,
   meta,
 }) => {
   let cursor = 0; // cursor acumulado en segundos
@@ -83,29 +84,32 @@ export const MainVideo: React.FC<RemotionInputProps> = ({
           ))
         : null}
 
-      {/* --- Marca de agua / título opcional --- */}
-      {meta?.title ? (
-        <AbsoluteFill
+      {/* --- Música de fondo cristiana (loop, volumen 10%) --- */}
+      {musicPath ? (
+        <Audio src={musicPath} volume={0.1} loop />
+      ) : null}
+
+      {/* --- Marca de agua: nombre del canal (abajo-derecha) --- */}
+      <AbsoluteFill
+        style={{
+          justifyContent: "flex-end",
+          alignItems: "flex-end",
+          padding: "0 32px 48px 32px",
+        }}
+      >
+        <span
           style={{
-            justifyContent: "flex-start",
-            alignItems: "flex-start",
-            padding: 40,
+            fontFamily: "system-ui, sans-serif",
+            fontWeight: 700,
+            fontSize: 22,
+            color: "rgba(255,255,255,0.6)",
+            textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+            letterSpacing: 0.5,
           }}
         >
-          <span
-            style={{
-              fontFamily: "system-ui, sans-serif",
-              fontWeight: 700,
-              fontSize: 26,
-              color: "rgba(255,255,255,0.75)",
-              textShadow: "0 2px 8px rgba(0,0,0,0.7)",
-              letterSpacing: 0.5,
-            }}
-          >
-            {meta.title}
-          </span>
-        </AbsoluteFill>
-      ) : null}
+          {meta?.channelName || "Canal Cristiano"}
+        </span>
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 };

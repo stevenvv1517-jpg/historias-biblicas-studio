@@ -126,10 +126,12 @@ export function buildInputProps(
   audioPath: string,
   totalDurationSec: number,
   meta?: { title: string; theme: string; category?: VideoCategory },
-  audioClips?: RemotionInputProps["audioClips"]
+  audioClips?: RemotionInputProps["audioClips"],
+  musicPath?: string,
+  channelName?: string
 ): RemotionInputProps {
   const resolvedMeta: RemotionInputProps["meta"] = meta
-    ? { title: meta.title, theme: meta.theme, category: (meta.category ?? "biblica") as VideoCategory }
+    ? { title: meta.title, theme: meta.theme, category: (meta.category ?? "biblica") as VideoCategory, channelName }
     : undefined;
 
   const props: RemotionInputProps = {
@@ -138,6 +140,7 @@ export function buildInputProps(
     audioPath,
     totalDurationSec,
     meta: resolvedMeta,
+    musicPath,
   };
   if (audioClips && audioClips.length > 0) {
     props.audioClips = audioClips;

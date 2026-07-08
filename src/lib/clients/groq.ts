@@ -30,7 +30,6 @@ export interface GroqPlanResult {
 
 export interface GroqPlanParams {
   topic: string;
-  sceneCount?: number; // 4..8 recomendado
   language?: string; // "es"
   category: "biblica" | "moraleja";
 }
@@ -45,7 +44,6 @@ const DEFAULT_MODEL =
  */
 export async function planBiblicalVideo({
   topic,
-  sceneCount = 6,
   language = "es",
   category = "biblica",
 }: GroqPlanParams): Promise<GroqPlanResult> {
@@ -62,7 +60,7 @@ REGLAS ESTRICTAS:
 - Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin markdown.
 - Idioma de salida: ${language}.
 - La historia debe tener una MORALEJA clara al final.
-- Entre ${Math.max(3, sceneCount - 1)} y ${sceneCount + 1} escenas.
+- TÚ decides cuántas escenas crear: mínimo 6, máximo 10.
 - Cada escena debe tener una "description" visual cinematográfica realista, con personajes en acción.
 - Cada escena debe incluir "dialogues": un array de objetos con { character, gender ("hombre"|"mujer"), line }.
 - Alterna el género de los diálogos: si hay dos personajes, que uno sea "hombre" y otro "mujer".
@@ -94,7 +92,7 @@ REGLAS ESTRICTAS:
 - Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin markdown.
 - Idioma de salida: ${language}.
 - La narración total debe ser fluida, emotiva, fiel al texto bíblico y apta para TTS (sin paréntesis ni acotaciones).
-- Entre ${Math.max(4, sceneCount - 1)} y ${sceneCount + 1} escenas.
+- TÚ decides cuántas escenas crear: mínimo 6, máximo 10.
 - Cada escena debe tener una "description" visual apta para un generador de imágenes. IMPORTANTE: las descripciones DEBEN incluir personajes bíblicos (personas) en acción, NO solo fondos o paisajes. Ejemplo correcto: "Adán y Eva caminando en el Jardín del Edén con Dios hablándoles, luz dorada, vegetación exuberante". Ejemplo INCORRECTO: "El Jardín del Edén con árboles y un río" (sin personas).
 - Cada escena debe tener "animation" con el tipo de movimiento sutil para Flux1 (ej: "slow zoom in", "natural head movement", "blinking", "gentle pan", "breathing").
 - Opcionalmente incluye "sfx": array de { at (segundo dentro de la escena), label (descripción del sonido) }.
@@ -179,5 +177,130 @@ FORMATO DE SALIDA:
     title: String(parsed?.title ?? topic).trim(),
     fullNarration,
     scenes,
+  };
+}
+
+/**
+ * Plan para "Versículo con Reflexión":
+ * Groq elige un versículo bíblico significativo, escribe una reflexión corta
+ * y genera el audio completo (versículo + reflexión).
+ */
+export async function planVersiculo({
+  topic,
+  language = "es",
+}: {
+  topic?: string;
+  language?: string;
+}): Promise<GroqPlanResult & { verseReference: string }> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("Falta GROQ_API_KEY en el entorno.");
+
+  const systemPrompt = `Eres un experto en la Biblia que crea videos cortos verticales (9:16) con versículos y reflexiones.
+
+REGLAS ESTRICTAS:
+- Responde ÚNICAMENTE con JSON válido, sin texto antes ni después, sin markdown.
+- Idioma de salida: ${language}.
+- Elige UN versículo bíblico relevante y poderoso, con su referencia (libro, capítulo, verso).
+- Escribe una "reflexion" corta (2-4 oraciones) que explique o aplique el versículo a la vida diaria.
+- La "fullNarration" debe ser: el versículo completo + " " + la reflexión.
+- La escena única debe tener:
+  - "description": descripción visual de naturaleza serena que acompañe el versículo (para referencia, aunque no se usa para generar imagen).
+  - "narration": la "fullNarration" completa.
+  - "verseText": el texto exacto del versículo.
+  - "verseReference": la referencia bíblica (ej: "Juan 3:16").
+  - "reflection": el texto de la reflexión.
+  - "animation": "slow zoom in".
+- El "title" debe ser la referencia del versículo (ej: "Juan 3:16").
+
+FORMATO DE SALIDA:
+{
+  "title": "string (referencia del versículo)",
+  "fullNarration": "string (versículo + reflexión)",
+  "verseReference": "string",
+  "verseText": "string",
+  "reflection": "string",
+  "scenes": [
+    {
+      "description": "string (descripción de naturaleza)",
+      "narration": "string (misma que fullNarration)",
+      "verseText": "string",
+      "verseReference": "string",
+      "reflection": "string",
+      "animation": "string"
+    }
+  ]
+}`;
+
+  const userContent = topic
+    ? `Tema o versículo sugerido: ${topic}`
+    : "Elige un versículo bíblico impactante y escribe una reflexión edificante.";
+
+  const res = await fetch(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+        temperature: 0.7,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq ${res.status}: ${errText}`);
+  }
+
+  const json: any = await res.json();
+  const content: string = json?.choices?.[0]?.message?.content ?? "";
+  if (!content) throw new Error("Groq: respuesta vacía.");
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("Groq: respuesta no es JSON válido.");
+  }
+
+  const scenes: GroqScenePlan[] = Array.isArray(parsed?.scenes)
+    ? parsed.scenes.map((s: any) => ({
+        description: String(s?.description ?? "").trim(),
+        narration: String(s?.narration ?? "").trim(),
+        animation: String(s?.animation ?? "").trim() || undefined,
+      }))
+    : [];
+
+  const fullNarration: string =
+    String(parsed?.fullNarration ?? "").trim() ||
+    scenes.map((s) => s.narration).join(" ");
+
+  const verseReference: string = String(parsed?.verseReference ?? parsed?.title ?? "").trim();
+  const verseText: string = String(parsed?.verseText ?? "").trim();
+  const reflection: string = String(parsed?.reflection ?? "").trim();
+
+  if (!fullNarration || scenes.length === 0) {
+    throw new Error("Groq: plan de versículo vacío.");
+  }
+
+  // Pasar verseText y verseReference como description extendida
+  scenes[0] = {
+    ...scenes[0],
+    description: `${verseReference}: ${verseText}. ${reflection}`,
+  };
+
+  return {
+    title: String(parsed?.title ?? (verseReference || "Versículo")).trim(),
+    fullNarration,
+    scenes,
+    verseReference,
   };
 }
