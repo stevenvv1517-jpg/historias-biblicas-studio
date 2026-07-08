@@ -193,26 +193,29 @@ export const VersiculoVideo: React.FC<VersiculoInputProps> = ({
       })}
 
       {/* Marca de agua del canal */}
-      <AbsoluteFill
-        style={{
-          justifyContent: "flex-end",
-          alignItems: "flex-end",
-          padding: "0 32px 48px 32px",
-        }}
-      >
-        <span
+      {channelName ? (
+        <AbsoluteFill
           style={{
-            fontFamily: "system-ui, sans-serif",
-            fontWeight: 700,
-            fontSize: 22,
-            color: "rgba(255,255,255,0.5)",
-            textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-            letterSpacing: 0.5,
+            justifyContent: "flex-end",
+            alignItems: "center",
+            padding: "0 0 40px 0",
           }}
         >
-          {channelName || "Canal Cristiano"}
-        </span>
-      </AbsoluteFill>
+          <span
+            style={{
+              fontFamily: "system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: 24,
+              color: "rgba(255,255,255,0.9)",
+              textShadow: "0 2px 16px rgba(0,0,0,0.9)",
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+            }}
+          >
+            {channelName}
+          </span>
+        </AbsoluteFill>
+      ) : null}
 
       {/* Audio narrado */}
       {audioPath && (

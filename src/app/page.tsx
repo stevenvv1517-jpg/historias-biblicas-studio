@@ -60,6 +60,7 @@ export default function StudioPage() {
   const [category, setCategory] = useState<VideoCategory>("biblica");
   const [topic, setTopic] = useState<string>("La creación del mundo");
   const [speed, setSpeed] = useState<number>(1);
+  const [channelName, setChannelName] = useState<string>(session?.user?.name || "");
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [statusMsg, setStatusMsg] = useState<string>("");
@@ -100,7 +101,7 @@ export default function StudioPage() {
       const res = await fetch("/api/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, category, speed }),
+        body: JSON.stringify({ topic, category, speed, channelName }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Pipeline falló.");
@@ -330,6 +331,18 @@ export default function StudioPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Nombre del canal (marca de agua)
+              </label>
+              <input
+                value={channelName}
+                onChange={(e) => setChannelName(e.target.value)}
+                className="w-full rounded-lg bg-studio-bg border border-studio-border px-4 py-2.5 outline-none focus:border-studio-accent transition"
+                placeholder="Tu nombre de canal"
+              />
             </div>
 
             <div>

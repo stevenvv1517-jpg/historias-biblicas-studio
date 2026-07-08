@@ -81,6 +81,7 @@ interface PipelineBody {
   category?: VideoCategory;
   voice?: string;
   speed?: number;
+  channelName?: string;
 }
 
 export async function POST(req: Request) {
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { topic, category = "biblica", voice, speed = 1 } = body;
+  const { topic, category = "biblica", voice, speed = 1, channelName: bodyChannelName } = body;
 
   if (!topic || typeof topic !== "string" || topic.trim().length < 3) {
     return NextResponse.json(
@@ -254,7 +255,7 @@ export async function POST(req: Request) {
       ? musicFiles[Math.floor(Math.random() * musicFiles.length)]
       : undefined;
 
-    const channelName = process.env.CHANNEL_NAME?.trim() || "Canal Cristiano";
+    const channelName = bodyChannelName?.trim() || "";
 
     let project: VideoProject;
     let stats: Record<string, any>;
