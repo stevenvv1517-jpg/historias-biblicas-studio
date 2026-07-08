@@ -60,7 +60,9 @@ export default function StudioPage() {
   const [category, setCategory] = useState<VideoCategory>("biblica");
   const [topic, setTopic] = useState<string>("La creación del mundo");
   const [speed, setSpeed] = useState<number>(1);
-  const [channelName, setChannelName] = useState<string>(session?.user?.name || "");
+  const [channelName, setChannelName] = useState<string>(
+    session?.user?.name || ""
+  );
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [statusMsg, setStatusMsg] = useState<string>("");
@@ -88,12 +90,16 @@ export default function StudioPage() {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
+  useEffect(() => {
+    if (session?.user?.name && !channelName) {
+      setChannelName(session.user.name);
+    }
+  }, [session, channelName]);
+
   async function handleGenerate() {
     setPhase("generating");
     setError("");
-    setStatusMsg(
-      "Generado… espere unos minutos"
-    );
+    setStatusMsg("Generado… espere unos minutos");
     setProject(null);
     setVideoPath("");
 
@@ -124,7 +130,7 @@ export default function StudioPage() {
     if (!project) return;
     setPhase("rendering");
     setError("");
-    setStatusMsg("Renderizando MP4 con @remotion/renderer… esto puede tardar.");
+    setStatusMsg("Renderizando MP4… esto puede tardar.");
 
     try {
       const res = await fetch("/api/render", {
@@ -156,9 +162,12 @@ export default function StudioPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-7xl px-6 py-10">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-10">
         <div className="flex items-center justify-center min-h-[50vh]">
-          <p className="text-studio-muted">Cargando…</p>
+          <div className="flex flex-col items-center gap-3">
+            <Spinner />
+            <p className="text-studio-muted text-sm">Cargando…</p>
+          </div>
         </div>
       </main>
     );
@@ -166,15 +175,15 @@ export default function StudioPage() {
 
   if (!session) {
     return (
-      <main className="mx-auto max-w-7xl px-6 py-10">
-        <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-10">
+        <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6 text-center">
           <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-studio-accent to-studio-accent2 grid place-items-center font-black text-white text-3xl">
             ✝
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-center">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             Historias Bíblicas Studio
           </h1>
-          <p className="text-studio-muted text-center max-w-md">
+          <p className="text-studio-muted max-w-md text-sm sm:text-base">
             Inicia sesión con Google para crear y guardar tus videos bíblicos
             con narración IA, imágenes Flux y subtítulos automáticos.
           </p>
@@ -196,51 +205,53 @@ export default function StudioPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      {/* Header con usuario */}
-      <header className="mb-10">
-        <div className="flex items-center justify-between">
+    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-10">
+      {/* Header */}
+      <header className="mb-6 sm:mb-10">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-studio-accent to-studio-accent2 grid place-items-center font-black text-white text-lg">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-studio-accent to-studio-accent2 grid place-items-center font-black text-white text-lg shrink-0">
               {category === "biblica" ? "✝" : category === "moraleja" ? "✦" : "🙏"}
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
                 {category === "biblica" ? "Historias Bíblicas Studio" : category === "moraleja" ? "Moralejas Studio" : "Versículos con Reflexión"}
               </h1>
-              <p className="text-sm text-studio-muted">
+              <p className="text-xs sm:text-sm text-studio-muted">
                 Solo por motor hecho por IA
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {session.user?.image && (
-              <img
-                src={session.user.image}
-                alt=""
-                className="w-8 h-8 rounded-full"
-              />
-            )}
-            <span className="text-sm text-studio-muted">
-              {session.user?.name}
-            </span>
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-2">
+              {session.user?.image && (
+                <img
+                  src={session.user.image}
+                  alt=""
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full"
+                />
+              )}
+              <span className="text-xs sm:text-sm text-studio-muted truncate max-w-[120px] sm:max-w-[200px]">
+                {session.user?.name}
+              </span>
+            </div>
             <button
               onClick={() => signOut()}
-              className="text-xs px-3 py-1.5 rounded-lg border border-studio-border hover:border-studio-accent text-studio-muted hover:text-studio-text transition"
+              className="text-xs px-3 py-1.5 rounded-lg border border-studio-border hover:border-studio-accent text-studio-muted hover:text-studio-text transition shrink-0"
             >
-              Cerrar sesión
+              Salir
             </button>
           </div>
         </div>
       </header>
 
-      {/* Tabs de modo */}
-      <div className="mb-8 flex gap-2 p-1.5 rounded-xl bg-studio-panel/40 border border-studio-border w-fit">
+      {/* Tabs */}
+      <div className="mb-6 sm:mb-8 flex gap-2 p-1.5 rounded-xl bg-studio-panel/40 border border-studio-border w-fit">
         <button
           type="button"
           onClick={() => setMode("generacion")}
-          className={`px-5 py-2 rounded-lg font-semibold text-sm transition ${
+          className={`px-4 sm:px-5 py-2 rounded-lg font-semibold text-xs sm:text-sm transition ${
             mode === "generacion"
               ? "bg-studio-accent text-white"
               : "text-studio-muted hover:text-studio-text"
@@ -251,7 +262,7 @@ export default function StudioPage() {
         <button
           type="button"
           onClick={() => setMode("clip-emotivo")}
-          className={`px-5 py-2 rounded-lg font-semibold text-sm transition ${
+          className={`px-4 sm:px-5 py-2 rounded-lg font-semibold text-xs sm:text-sm transition ${
             mode === "clip-emotivo"
               ? "bg-studio-accent2 text-studio-bg"
               : "text-studio-muted hover:text-studio-text"
@@ -265,9 +276,10 @@ export default function StudioPage() {
       {mode === "clip-emotivo" ? (
         <ClipEmotivoPanel />
       ) : (
-      <div className="grid lg:grid-cols-[1fr_400px] gap-8">
+      <div className="grid lg:grid-cols-[1fr_400px] gap-6 sm:gap-8">
         <section className="space-y-6">
-          <div className="rounded-2xl border border-studio-border bg-studio-panel/60 backdrop-blur p-6 space-y-5">
+          <div className="rounded-2xl border border-studio-border bg-studio-panel/60 backdrop-blur p-4 sm:p-6 space-y-5">
+            {/* Categoría */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Categoría
@@ -276,7 +288,7 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => { setCategory("biblica"); setTopic(SAMPLE_TOPICS.biblica[0]); }}
-                  className={`px-4 py-2.5 rounded-lg border font-semibold text-sm transition ${
+                  className={`px-3 py-2.5 rounded-lg border font-semibold text-xs sm:text-sm transition ${
                     category === "biblica"
                       ? "bg-studio-accent/20 border-studio-accent text-studio-accent"
                       : "border-studio-border text-studio-muted hover:border-studio-accent"
@@ -287,7 +299,7 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => { setCategory("moraleja"); setTopic(SAMPLE_TOPICS.moraleja[0]); }}
-                  className={`px-4 py-2.5 rounded-lg border font-semibold text-sm transition ${
+                  className={`px-3 py-2.5 rounded-lg border font-semibold text-xs sm:text-sm transition ${
                     category === "moraleja"
                       ? "bg-studio-accent2/20 border-studio-accent2 text-studio-accent2"
                       : "border-studio-border text-studio-muted hover:border-studio-accent"
@@ -298,7 +310,7 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => { setCategory("versiculo"); setTopic(""); }}
-                  className={`px-4 py-2.5 rounded-lg border font-semibold text-sm transition ${
+                  className={`px-3 py-2.5 rounded-lg border font-semibold text-xs sm:text-sm transition ${
                     category === "versiculo"
                       ? "bg-amber-500/20 border-amber-500 text-amber-400"
                       : "border-studio-border text-studio-muted hover:border-amber-500"
@@ -309,15 +321,16 @@ export default function StudioPage() {
               </div>
             </div>
 
+            {/* Tema */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                {category === "biblica" ? "Tema bíblico" : category === "moraleja" ? "Tema de la moraleja" : "Tema (opcional — Groq elige el versículo)"}
+                {category === "biblica" ? "Tema bíblico" : category === "moraleja" ? "Tema de la moraleja" : "Tema (opcional)"}
               </label>
               <input
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                className="w-full rounded-lg bg-studio-bg border border-studio-border px-4 py-2.5 outline-none focus:border-studio-accent transition"
-                placeholder={category === "biblica" ? "Ej: David y Goliat" : category === "moraleja" ? "Ej: El perdón entre padre e hija" : "Ej: Fe y esperanza (o déjalo vacío)"}
+                className="w-full rounded-lg bg-studio-bg border border-studio-border px-4 py-2.5 outline-none focus:border-studio-accent transition text-sm"
+                placeholder={category === "biblica" ? "Ej: David y Goliat" : category === "moraleja" ? "Ej: El perdón entre padre e hija" : "Ej: Fe y esperanza"}
               />
               <div className="mt-2 flex flex-wrap gap-2">
                 {sampleTopics.map((t) => (
@@ -333,18 +346,20 @@ export default function StudioPage() {
               </div>
             </div>
 
+            {/* Nombre del canal */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Nombre del canal (marca de agua)
+                Nombre del canal <span className="text-studio-muted font-normal">(marca de agua)</span>
               </label>
               <input
                 value={channelName}
                 onChange={(e) => setChannelName(e.target.value)}
-                className="w-full rounded-lg bg-studio-bg border border-studio-border px-4 py-2.5 outline-none focus:border-studio-accent transition"
+                className="w-full rounded-lg bg-studio-bg border border-studio-border px-4 py-2.5 outline-none focus:border-studio-accent transition text-sm"
                 placeholder="Tu nombre de canal"
               />
             </div>
 
+            {/* Velocidad */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Velocidad: {speed.toFixed(2)}x
@@ -360,20 +375,29 @@ export default function StudioPage() {
               />
             </div>
 
+            {/* Botones de acción */}
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={handleGenerate}
                 disabled={busy || topic.trim().length < 3}
-                className="px-5 py-2.5 rounded-lg bg-studio-accent hover:bg-studio-accent/90 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition"
+                className="px-5 py-2.5 rounded-lg bg-studio-accent hover:bg-studio-accent/90 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition flex items-center gap-2"
               >
-                {phase === "generating" ? "Generando…" : "① Generar video"}
+                {phase === "generating" ? (
+                  <><Spinner size="sm" /> Generando…</>
+                ) : (
+                  "① Generar video"
+                )}
               </button>
               <button
                 onClick={handleRender}
                 disabled={busy || !project}
-                className="px-5 py-2.5 rounded-lg bg-studio-accent2 text-studio-bg hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition"
+                className="px-5 py-2.5 rounded-lg bg-studio-accent2 text-studio-bg hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition flex items-center gap-2"
               >
-                {phase === "rendering" ? "Renderizando…" : "② Renderizar MP4"}
+                {phase === "rendering" ? (
+                  <><Spinner size="sm" /> Renderizando…</>
+                ) : (
+                  "② Renderizar MP4"
+                )}
               </button>
               {videoPath && (
                 <a
@@ -381,11 +405,12 @@ export default function StudioPage() {
                   download
                   className="px-5 py-2.5 rounded-lg border border-studio-border hover:border-studio-accent font-semibold transition"
                 >
-                  ⬇ Descargar MP4
+                  ⬇ Descargar
                 </a>
               )}
             </div>
 
+            {/* Status / Error */}
             {(statusMsg || error) && (
               <div
                 className={`text-sm rounded-lg px-4 py-3 border ${
@@ -399,9 +424,10 @@ export default function StudioPage() {
             )}
           </div>
 
+          {/* Guion generado */}
           {project && (
-            <div className="rounded-2xl border border-studio-border bg-studio-panel/40 p-6">
-              <h3 className="font-semibold mb-1">
+            <div className="rounded-2xl border border-studio-border bg-studio-panel/40 p-4 sm:p-6">
+              <h3 className="font-semibold mb-1 text-sm sm:text-base">
                 {project.category === "moraleja" ? "Diálogos generados" : "Guion generado"} por Groq
               </h3>
               <p className="text-xs text-studio-muted mb-3">
@@ -417,10 +443,10 @@ export default function StudioPage() {
               </p>
               {project.category === "moraleja" &&
               project.visualScenes.some((s) => s.dialogues) ? (
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-64 overflow-y-auto">
                   {project.visualScenes.map((scene, si) =>
                     scene.dialogues?.map((d, di) => (
-                      <div key={`${si}_${di}`} className="flex gap-2 text-sm leading-relaxed">
+                      <div key={`${si}_${di}`} className="flex gap-2 text-xs sm:text-sm leading-relaxed">
                         <span
                           className={`font-bold shrink-0 ${
                             d.gender === "mujer" ? "text-pink-400" : "text-cyan-400"
@@ -434,17 +460,18 @@ export default function StudioPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-sm leading-relaxed text-studio-text/90 whitespace-pre-wrap">
+                <p className="text-xs sm:text-sm leading-relaxed text-studio-text/90 whitespace-pre-wrap max-h-64 overflow-y-auto">
                   {project.audioConfig.script}
                 </p>
               )}
             </div>
           )}
 
+          {/* Resumen */}
           {project && (
-            <div className="rounded-2xl border border-studio-border bg-studio-panel/40 p-6">
-              <h3 className="font-semibold mb-3">Resumen del proyecto</h3>
-              <ul className="text-sm text-studio-muted space-y-1.5">
+            <div className="rounded-2xl border border-studio-border bg-studio-panel/40 p-4 sm:p-6">
+              <h3 className="font-semibold mb-3 text-sm sm:text-base">Resumen</h3>
+              <ul className="text-xs sm:text-sm text-studio-muted space-y-1.5">
                 <li><span className="text-studio-text">ID:</span> {project.id}</li>
                 <li>
                   <span className="text-studio-text">Duración:</span>{" "}
@@ -453,12 +480,12 @@ export default function StudioPage() {
                 </li>
                 <li><span className="text-studio-text">Escenas:</span> {project.visualScenes.length}</li>
                 <li>
-                  <span className="text-studio-text">Subtítulos Popis:</span>{" "}
+                  <span className="text-studio-text">Subtítulos:</span>{" "}
                   {project.remotionPlayerConfig.inputProps.subtitles.length}
                 </li>
                 <li>
                   <span className="text-studio-text">Audio:</span>{" "}
-                  <code className="text-studio-accent2">{project.audioConfig.localPath}</code>
+                  <code className="text-studio-accent2 text-xs">{project.audioConfig.localPath}</code>
                 </li>
               </ul>
             </div>
@@ -466,7 +493,7 @@ export default function StudioPage() {
         </section>
 
         <aside className="space-y-4">
-          <h2 className="font-semibold text-lg">Vista previa</h2>
+          <h2 className="font-semibold text-base sm:text-lg">Vista previa</h2>
           {playerConfig ? (
             <VideoPreview config={playerConfig} />
           ) : (
@@ -485,26 +512,26 @@ export default function StudioPage() {
       )}
 
       {/* HISTORIAL */}
-      <section className="mt-16">
+      <section className="mt-12 sm:mt-16">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold tracking-tight">
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight">
             📜 Mis videos
           </h2>
           {history.length > 0 && (
-            <span className="text-sm text-studio-muted">
+            <span className="text-xs sm:text-sm text-studio-muted">
               {history.length} video{history.length !== 1 ? "s" : ""}
             </span>
           )}
         </div>
 
         {history.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-studio-border bg-studio-panel/20 p-10 text-center">
+          <div className="rounded-2xl border border-dashed border-studio-border bg-studio-panel/20 p-8 sm:p-10 text-center">
             <p className="text-studio-muted text-sm">
               Aún no tienes videos. Crea tu primer video arriba y aparecerá aquí.
             </p>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {history.map((entry) => (
               <div
                 key={entry.id}
@@ -566,5 +593,14 @@ export default function StudioPage() {
         )}
       </section>
     </main>
+  );
+}
+
+function Spinner({ size = "md" }: { size?: "sm" | "md" }) {
+  const cls = size === "sm" ? "w-4 h-4 border-2" : "w-8 h-8 border-3";
+  return (
+    <span
+      className={`inline-block ${cls} border-studio-accent/30 border-t-studio-accent rounded-full animate-spin`}
+    />
   );
 }

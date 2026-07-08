@@ -4,17 +4,11 @@ import React from "react";
 import { Player } from "@remotion/player";
 import { MainVideo } from "../../remotion-app/MainVideo";
 import { ClipVideo } from "../../remotion-app/ClipVideo";
+import { VersiculoVideo } from "../../remotion-app/VersiculoVideo";
 import type {
   RemotionPlayerConfig,
   ClipEmotivoPlayerConfig,
 } from "@/lib/types";
-
-// ============================================================
-//  VideoPreview — wrapper cliente del <Player/> de Remotion.
-//  Recibe la configuración completa generada por la API.
-//  Soporta ambas composiciones: MainVideo (BÍBLICA/MORALEJA)
-//  y ClipVideo (CLIP EMOTIVO).
-// ============================================================
 
 type AnyPlayerConfig = RemotionPlayerConfig | ClipEmotivoPlayerConfig;
 
@@ -22,14 +16,14 @@ interface VideoPreviewProps {
   config: AnyPlayerConfig;
 }
 
-function isClipConfig(
-  config: AnyPlayerConfig
-): config is ClipEmotivoPlayerConfig {
-  return config.compositionName === "ClipVideo";
+function getComponent(config: AnyPlayerConfig) {
+  if (config.compositionName === "ClipVideo") return ClipVideo;
+  if (config.compositionName === "VersiculoVideo") return VersiculoVideo;
+  return MainVideo;
 }
 
 export const VideoPreview: React.FC<VideoPreviewProps> = ({ config }) => {
-  const Component = isClipConfig(config) ? ClipVideo : MainVideo;
+  const Component = getComponent(config);
   return (
     <div className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl overflow-hidden border border-studio-border shadow-2xl shadow-black/50 bg-black">
       <Player
