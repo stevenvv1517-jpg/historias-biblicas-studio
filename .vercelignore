@@ -1,0 +1,5 @@
+public/assets/audio
+public/assets/images
+public/assets/videos
+.next
+node_modules

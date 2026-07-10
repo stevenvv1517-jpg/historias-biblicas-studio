@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 
 const FFMPEG_DIR = path.join(projectRoot, "node_modules", "@ffmpeg-installer", "win32-x64");
 process.env.PATH = `${FFMPEG_DIR}${path.delimiter}${process.env.PATH}`;
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 let cachedServeUrl: string | null = null;
 
