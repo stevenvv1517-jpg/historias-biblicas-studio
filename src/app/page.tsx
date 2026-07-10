@@ -175,7 +175,7 @@ export default function StudioPage() {
             ✝
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            Historias Bíblicas Studio
+            Historias Bíblicas Studio <span className="text-xs font-normal text-studio-muted">Beta</span>
           </h1>
           <p className="text-studio-muted max-w-md text-sm sm:text-base">
             Inicia sesión con Google para crear y guardar tus videos bíblicos
@@ -209,7 +209,7 @@ export default function StudioPage() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-                {category === "biblica" ? "Historias Bíblicas Studio" : category === "moraleja" ? "Moralejas Studio" : "Versículos con Reflexión"}
+                {category === "biblica" ? "Historias Bíblicas Studio" : category === "moraleja" ? "Moralejas Studio" : "Versículos con Reflexión"} <span className="text-xs font-normal text-studio-muted">Beta</span>
               </h1>
               <p className="text-xs sm:text-sm text-studio-muted">
                 Solo por motor hecho por IA

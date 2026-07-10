@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Historias Bíblicas Studio",
+  title: "Historias Bíblicas Studio (Beta)",
   description:
     "Genera videos bíblicos verticales (9:16) con narración IA, subtítulos automáticos y render MP4.",
   icons: {
