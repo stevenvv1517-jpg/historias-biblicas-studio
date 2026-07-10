@@ -6,7 +6,6 @@ import type {
   RemotionInputProps,
 } from "./types";
 import type { GroqScenePlan } from "./clients/groq";
-import { assetUrl } from "./paths";
 
 // ============================================================
 //  Utilidades de conversión y orquestación del pipeline
@@ -120,27 +119,6 @@ export function distributeScenesFromPlan(
   });
 }
 
-/** Convierte rutas de assets dentro de inputProps a URLs servibles. */
-function resolveAssetPaths(props: RemotionInputProps): RemotionInputProps {
-  return {
-    ...props,
-    audioPath: props.audioPath ? assetUrl(props.audioPath) : undefined,
-    musicPath: props.musicPath ? assetUrl(props.musicPath) : undefined,
-    scenes: props.scenes.map((s) => ({
-      ...s,
-      localPath: s.localPath ? assetUrl(s.localPath) : s.localPath,
-      audioFx: s.audioFx?.map((fx) => ({
-        ...fx,
-        path: fx.path ? assetUrl(fx.path) : fx.path,
-      })),
-    })),
-    audioClips: props.audioClips?.map((c) => ({
-      ...c,
-      path: c.path ? assetUrl(c.path) : c.path,
-    })),
-  };
-}
-
 /** Construye el objeto de inputProps consolidado para Remotion. */
 export function buildInputProps(
   scenes: VisualScene[],
@@ -167,7 +145,7 @@ export function buildInputProps(
   if (audioClips && audioClips.length > 0) {
     props.audioClips = audioClips;
   }
-  return resolveAssetPaths(props);
+  return props;
 }
 
 /** ID corto y único para el proyecto. */
