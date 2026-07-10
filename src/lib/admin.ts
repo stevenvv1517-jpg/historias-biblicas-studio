@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getHistory } from "./history";
 
+const DATA_DIR = process.env.VERCEL ? "/tmp/data" : path.join(process.cwd(), "public", "assets");
+
 export interface AdminUser {
   email: string;
   name: string;
@@ -20,7 +22,7 @@ export interface AdminStats {
   users: AdminUser[];
 }
 
-const USERS_FILE = path.join(process.cwd(), "public", "assets", "users.json");
+const USERS_FILE = path.join(DATA_DIR, "users.json");
 
 async function ensureUsersFile(): Promise<void> {
   try {
