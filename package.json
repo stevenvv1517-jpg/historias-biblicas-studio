@@ -20,6 +20,8 @@
     "@remotion/cli": "4.0.369",
     "@remotion/player": "4.0.369",
     "@remotion/renderer": "4.0.369",
+    "@trigger.dev/nextjs": "^3.3.12",
+    "@trigger.dev/sdk": "^3.3.17",
     "@types/fluent-ffmpeg": "^2.1.28",
     "fluent-ffmpeg": "^2.1.3",
     "next": "^14.2.35",
