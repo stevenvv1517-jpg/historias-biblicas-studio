@@ -60,9 +60,7 @@ export default function StudioPage() {
   const [category, setCategory] = useState<VideoCategory>("biblica");
   const [topic, setTopic] = useState<string>("La creación del mundo");
   const [speed, setSpeed] = useState<number>(1);
-  const [channelName, setChannelName] = useState<string>(
-    session?.user?.name || ""
-  );
+  const [channelName, setChannelName] = useState<string>("");
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [statusMsg, setStatusMsg] = useState<string>("");
@@ -90,11 +88,7 @@ export default function StudioPage() {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  useEffect(() => {
-    if (session?.user?.name && !channelName) {
-      setChannelName(session.user.name);
-    }
-  }, [session, channelName]);
+
 
   async function handleGenerate() {
     setPhase("generating");

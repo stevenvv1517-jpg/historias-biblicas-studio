@@ -25,7 +25,7 @@ import { transcribeDeepgram } from "@/lib/clients/deepgram";
 import { generateFluxImage } from "@/lib/clients/cloudflare";
 import { planBiblicalVideo, planVersiculo } from "@/lib/clients/groq";
 import { fetchNatureVideo } from "@/lib/clients/pexels";
-import { publicToDisk } from "@/lib/paths";
+import { publicToDisk, assetUrl } from "@/lib/paths";
 import { concatenateMp3s, getMp3Duration } from "@/lib/audio";
 import { listMusicFiles } from "@/lib/video-utils";
 
@@ -266,9 +266,9 @@ export async function POST(req: Request) {
         verseText,
         verseReference,
         reflection,
-        audioPath: audioPublicPath,
+        audioPath: assetUrl(audioPublicPath),
         videoUrl: natureVideoUrl,
-        musicPath,
+        musicPath: musicPath ? assetUrl(musicPath) : undefined,
         totalDurationSec: audioDurationSec,
         channelName,
         subtitles: popisSubtitles,

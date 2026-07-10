@@ -6,7 +6,7 @@ import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { publicToDisk, projectRoot } from "@/lib/paths";
+import { publicToDisk, projectRoot, DATA_DIR } from "@/lib/paths";
 import { uploadToB2, getB2Config } from "@/lib/b2";
 import { addToHistory } from "@/lib/history";
 import type { RemotionInputProps, ClipEmotivoInputProps } from "@/lib/types";
@@ -40,7 +40,7 @@ async function syncAssetsToBundle(serveUrl: string) {
     ? path.dirname(bundleFile)
     : bundleFile.replace(/[/\\]$/, "");
 
-  const assetsSrc = path.join(projectRoot, "public", "assets");
+  const assetsSrc = DATA_DIR;
   const assetsDst = path.join(bundleDir, "assets");
 
   console.log(`[render] copiando assets:\n  origen: ${assetsSrc}\n  destino: ${assetsDst}`);

@@ -27,4 +27,16 @@ export function buildPublicAssetPath(
   return `/assets/${folder}/${filename}`;
 }
 
+/**
+ * En producción (Vercel), los assets generados se sirven mediante
+ * la API /api/files/... porque /tmp no es accesible directamente.
+ * En local se sirven estáticamente desde /public.
+ */
+export function assetUrl(publicPath: string): string {
+  if (process.env.VERCEL) {
+    return `/api/files${publicPath}`;
+  }
+  return publicPath;
+}
+
 export { projectRoot };
