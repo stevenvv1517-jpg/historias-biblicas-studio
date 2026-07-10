@@ -102,6 +102,8 @@ export const VersiculoVideo: React.FC<VersiculoInputProps> = ({
               }}
               loop
               muted
+              autoPlay
+              playsInline
             />
           </AbsoluteFill>
         </Sequence>
