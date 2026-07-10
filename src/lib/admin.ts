@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getHistory } from "./history";
-
-const DATA_DIR = process.env.VERCEL ? "/tmp/data" : path.join(process.cwd(), "public", "assets");
+import { META_DIR } from "./paths";
 
 export interface AdminUser {
   email: string;
@@ -22,7 +21,7 @@ export interface AdminStats {
   users: AdminUser[];
 }
 
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+const USERS_FILE = path.join(META_DIR, "users.json");
 
 async function ensureUsersFile(): Promise<void> {
   try {
@@ -72,8 +71,11 @@ export async function getStats(): Promise<AdminStats> {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const filtered = adminEmail ? users.filter((u) => u.email !== adminEmail) : users;
+
   const enriched = await Promise.all(
-    users.map(async (user) => {
+    filtered.map(async (user) => {
       const history = await getHistory(user.email);
       const totalVideos = history.length;
       return { ...user, totalVideos };

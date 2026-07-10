@@ -1,7 +1,6 @@
 ﻿import fs from "node:fs/promises";
 import path from "node:path";
-
-export const DATA_DIR = process.env.VERCEL ? "/tmp/data" : path.join(process.cwd(), "public", "assets");
+import { META_DIR } from "./paths";
 
 export interface HistoryEntry {
   id: string;
@@ -20,7 +19,7 @@ function getHistoryFile(email?: string): string {
   const safe = email
     ? Buffer.from(email).toString("base64url").slice(0, 48)
     : "anonymous";
-  return path.join(DATA_DIR, `history_${safe}.json`);
+  return path.join(META_DIR, `history_${safe}.json`);
 }
 
 async function ensureHistoryFile(email?: string): Promise<string> {

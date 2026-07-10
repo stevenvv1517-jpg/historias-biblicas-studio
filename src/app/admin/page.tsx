@@ -109,12 +109,6 @@ export default function AdminPage() {
               </p>
               <p className="text-3xl font-bold">{stats.totalVideos}</p>
             </div>
-            <div className="rounded-2xl border border-studio-border bg-studio-panel/40 p-5">
-              <p className="text-xs text-studio-muted uppercase tracking-wide mb-1">
-                Suscriptores Premium
-              </p>
-              <p className="text-3xl font-bold">{stats.subscribers}</p>
-            </div>
           </div>
 
           {/* Stats del mes */}
@@ -153,7 +147,6 @@ export default function AdminPage() {
                     <th className="pb-3 pr-4">Nombre</th>
                     <th className="pb-3 pr-4">Primer ingreso</th>
                     <th className="pb-3 pr-4">Último ingreso</th>
-                    <th className="pb-3 pr-4">Suscripción</th>
                     <th className="pb-3 text-right">Videos</th>
                   </tr>
                 </thead>
@@ -173,19 +166,6 @@ export default function AdminPage() {
                       <td className="py-3 pr-4 text-studio-muted">
                         {new Date(user.lastSignIn).toLocaleDateString("es-ES")}
                       </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            user.subscription === "premium"
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : "bg-studio-border/30 text-studio-muted"
-                          }`}
-                        >
-                          {user.subscription === "premium"
-                            ? "Premium"
-                            : "Free"}
-                        </span>
-                      </td>
                       <td className="py-3 text-right font-mono">
                         {user.totalVideos}
                       </td>
@@ -193,7 +173,7 @@ export default function AdminPage() {
                   ))}
                   {stats.users.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-studio-muted">
+                      <td colSpan={5} className="py-6 text-center text-studio-muted">
                         No hay usuarios registrados
                       </td>
                     </tr>
