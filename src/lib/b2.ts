@@ -78,3 +78,33 @@ export async function getSignedDownloadUrl(
 
   return url;
 }
+
+export async function readJsonFromB2<T>(remoteKey: string): Promise<T | null> {
+  try {
+    const { bucket } = getB2Config();
+    const s3 = getClient();
+    const resp = await s3.send(
+      new GetObjectCommand({ Bucket: bucket, Key: remoteKey })
+    );
+    const body = await resp.Body?.transformToString("utf-8");
+    return body ? JSON.parse(body) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeJsonToB2(
+  remoteKey: string,
+  data: unknown
+): Promise<void> {
+  const { bucket } = getB2Config();
+  const s3 = getClient();
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: remoteKey,
+      Body: JSON.stringify(data, null, 2),
+      ContentType: "application/json",
+    })
+  );
+}

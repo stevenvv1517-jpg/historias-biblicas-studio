@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getHistory } from "./history";
-import { META_DIR } from "./paths";
+import { META_DIR, isVercel } from "./paths";
+import { readJsonFromB2, writeJsonToB2 } from "./b2";
 
 export interface AdminUser {
   email: string;
@@ -22,24 +23,46 @@ export interface AdminStats {
 }
 
 const USERS_FILE = path.join(META_DIR, "users.json");
+const B2_USERS_KEY = "meta/users.json";
+let cachedUsers: AdminUser[] | null = null;
 
-async function ensureUsersFile(): Promise<void> {
-  try {
-    await fs.access(USERS_FILE);
-  } catch {
-    await fs.mkdir(path.dirname(USERS_FILE), { recursive: true });
-    await fs.writeFile(USERS_FILE, "[]", "utf-8");
-  }
+async function getUsersB2(): Promise<AdminUser[]> {
+  if (cachedUsers) return cachedUsers;
+  const data = await readJsonFromB2<AdminUser[]>(B2_USERS_KEY);
+  cachedUsers = data ?? [];
+  return cachedUsers;
 }
 
-export async function getUsers(): Promise<AdminUser[]> {
-  await ensureUsersFile();
+async function saveUsersB2(users: AdminUser[]): Promise<void> {
+  cachedUsers = users;
+  await writeJsonToB2(B2_USERS_KEY, users);
+}
+
+async function getUsersLocal(): Promise<AdminUser[]> {
   try {
+    await fs.access(USERS_FILE).catch(async () => {
+      await fs.mkdir(path.dirname(USERS_FILE), { recursive: true });
+      await fs.writeFile(USERS_FILE, "[]", "utf-8");
+    });
     const data = await fs.readFile(USERS_FILE, "utf-8");
     return JSON.parse(data);
   } catch {
     return [];
   }
+}
+
+async function saveUsersLocal(users: AdminUser[]): Promise<void> {
+  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
+}
+
+async function getUsers(): Promise<AdminUser[]> {
+  if (isVercel) return getUsersB2();
+  return getUsersLocal();
+}
+
+async function saveUsers(users: AdminUser[]): Promise<void> {
+  if (isVercel) return saveUsersB2(users);
+  return saveUsersLocal(users);
 }
 
 export async function addUserSession(
@@ -63,7 +86,7 @@ export async function addUserSession(
     });
   }
 
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
+  await saveUsers(users);
 }
 
 export async function getStats(): Promise<AdminStats> {

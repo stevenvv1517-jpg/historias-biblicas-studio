@@ -3,7 +3,7 @@ import path from "node:path";
 const projectRoot =
   process.env.PROJECT_ROOT ?? path.join(process.cwd());
 
-const isVercel = !!process.env.VERCEL;
+export const isVercel = !!process.env.VERCEL;
 
 /** En Vercel solo /tmp es escribible; en local usamos la raíz del proyecto. */
 const WRITABLE_ROOT = isVercel ? "/tmp" : projectRoot;
