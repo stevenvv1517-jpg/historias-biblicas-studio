@@ -7,11 +7,15 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 
 export const renderVideoTask = task({
   id: "render-video",
+  queue: {
+    concurrencyLimit: 5,
+  },
   run: async (payload: {
     inputProps: Record<string, unknown>;
     totalDurationSec: number;
     compositionId: string;
     videoId: string;
+    priority?: "high" | "normal" | "low";
   }) => {
     const { inputProps, totalDurationSec, compositionId, videoId } = payload;
 

@@ -1,41 +1,25 @@
 import type { VoiceOption } from "./types";
 
 // ============================================================
-//  Voces LMNT recomendadas para narración bíblica en español.
-//  Verifica disponibilidad en https://app.lmnt.com/api/docs#voices
-//  Los IDs son los nombres oficiales de voz de LMNT.
+//  Voces edge-tts (Microsoft Edge TTS) para narración bíblica en español.
+//  Gratis, sin API key, incluye subtítulos SRT.
 // ============================================================
 
-export const LMNT_VOICES: VoiceOption[] = [
+export const EDGE_TTS_VOICES_CATALOG: VoiceOption[] = [
   {
-    id: "marcus",
-    label: "Marcus — Narrador grave",
-    description: "Voz masculina profunda, ideal para relatos épicos y profecías.",
+    id: "narrador",
+    label: "Elvira — Narradora principal",
+    description: "Voz femenina clara y natural (España), ideal para narración bíblica.",
   },
   {
-    id: "lily",
-    label: "Lily — Narradora cálida",
-    description: "Voz femenina suave, perfecta para enseñanzas y Salmos.",
+    id: "hombre",
+    label: "Álvaro — Personajes masculinos",
+    description: "Voz masculina autoritaria (España), perfecta para profetas y reyes.",
   },
   {
-    id: "henry",
-    label: "Henry — Voz cinematográfica",
-    description: "Voz masculina neutra con tono documental.",
-  },
-  {
-    id: "charlotte",
-    label: "Charlotte — Narradora épica",
-    description: "Voz femenina potente, ideal para milagros y batallas.",
-  },
-  {
-    id: "daniel",
-    label: "Daniel — Voz serena",
-    description: "Voz masculina pausada, ideal para enseñanzas de Jesús.",
-  },
-  {
-    id: "eva",
-    label: "Eva — Voz dulce",
-    description: "Voz femenina cercana para historias de fe.",
+    id: "mujer",
+    label: "Dalia — Personajes femeninos",
+    description: "Voz femenina cálida (México), ideal para historias de fe.",
   },
 ];
 

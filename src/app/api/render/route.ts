@@ -1,8 +1,9 @@
 ﻿import { NextResponse } from "next/server";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { renderVideoTask } from "../../../../trigger/render-video";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import type { RemotionInputProps, ClipEmotivoInputProps } from "@/lib/types";
+import { getUserTier } from "@/lib/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -11,11 +12,6 @@ interface RenderBody {
   inputProps: RemotionInputProps | ClipEmotivoInputProps;
   totalDurationSec: number;
   compositionId?: string;
-}
-
-async function getUserEmail(): Promise<string | undefined> {
-  const session = await getServerSession(authOptions);
-  return session?.user?.email ?? undefined;
 }
 
 export async function POST(req: Request) {
@@ -33,17 +29,23 @@ export async function POST(req: Request) {
     );
   }
 
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email ?? "";
+  const tier = await getUserTier(email);
+
   const videoId = `vid_${Date.now().toString(36)}`;
   const compositionId = body.compositionId ?? "MainVideo";
+  const priority = tier === "premium" ? "high" : "normal";
 
   try {
-    console.log(`[/api/render] lanzando render en Trigger.dev…`);
+    console.log(`[/api/render] lanzando render en Trigger.dev… tier=${tier} priority=${priority}`);
 
-    const handle = await tasks.trigger<"render-video">("render-video", {
+    const handle = await renderVideoTask.trigger({
       inputProps: body.inputProps as any,
       totalDurationSec: body.totalDurationSec,
       compositionId,
       videoId,
+      priority,
     });
 
     console.log(`[/api/render] tarea lanzada: ${handle.id}`);
@@ -52,6 +54,8 @@ export async function POST(req: Request) {
       ok: true,
       taskId: handle.id,
       videoId,
+      tier,
+      priority,
       message: "Render lanzado en Trigger.dev",
     });
   } catch (err: any) {

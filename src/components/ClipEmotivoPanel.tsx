@@ -58,7 +58,9 @@ export const ClipEmotivoPanel: React.FC = () => {
         method: "POST",
         body: form,
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no-JSON del servidor: ${text.slice(0, 200)}`); }
       if (!res.ok || !data.ok) throw new Error(data.error || "Procesamiento falló.");
 
       setProject(data.project);
@@ -89,11 +91,13 @@ export const ClipEmotivoPanel: React.FC = () => {
           compositionId: "ClipVideo",
         }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no-JSON del servidor: ${text.slice(0, 200)}`); }
       if (!res.ok || !data.ok) throw new Error(data.error || "Render falló.");
 
-      setVideoPath(data.videoPath);
-      setStatus(`✅ MP4 listo: ${data.frames} frames @ ${data.fps}fps`);
+      setVideoPath(`/assets/videos/${data.videoId}.mp4`);
+      setStatus(`✅ Render enviado. Puede tardar ~2 min.`);
       setPhase("done");
     } catch (e: any) {
       setError(e?.message ?? "Error de render");

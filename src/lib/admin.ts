@@ -89,6 +89,13 @@ export async function addUserSession(
   await saveUsers(users);
 }
 
+export async function getUserTier(email: string): Promise<"free" | "premium"> {
+  if (!email) return "free";
+  const users = await getUsers();
+  const user = users.find((u) => u.email === email);
+  return user?.subscription ?? "free";
+}
+
 export async function getStats(): Promise<AdminStats> {
   const users = await getUsers();
   const now = new Date();

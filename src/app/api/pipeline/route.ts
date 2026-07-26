@@ -8,8 +8,6 @@ import {
   FPS,
   VIDEO_WIDTH,
   VIDEO_HEIGHT,
-  FLUX_PROMPT_TEMPLATE,
-  FLUX_PROMPT_MORALEJA_TEMPLATE,
 } from "@/lib/pipeline";
 import type {
   VideoProject,
@@ -20,7 +18,7 @@ import type {
   DialogueBlock,
   VideoCategory,
 } from "@/lib/types";
-import { synthesizeCloudflareTTS, synthesizeInworld } from "@/lib/clients/cloudflare-tts";
+import { synthesizeEdgeTTS, EDGE_TTS_VOICES } from "@/lib/clients/edge-tts";
 import { transcribeDeepgram } from "@/lib/clients/deepgram";
 import { generateFluxImage } from "@/lib/clients/cloudflare";
 import { planBiblicalVideo, planVersiculo } from "@/lib/clients/groq";
@@ -28,15 +26,18 @@ import { fetchNatureVideo } from "@/lib/clients/pexels";
 import { publicToDisk } from "@/lib/paths";
 import { concatenateMp3s, getMp3Duration } from "@/lib/audio";
 import { listMusicFiles } from "@/lib/video-utils";
+import { addToHistory } from "@/lib/history";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 // Forzamos runtime Node para poder usar fs y fetch nativo.
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 min: las llamadas a IA tardan.
 
-// Voces Cloudflare: Aura-2 para bíblicas, Inworld para moralejas
+// Voces edge-tts: Elvira para bíblicas, voces por género para moralejas
 const VOICE_MAP: Record<"hombre" | "mujer", string> = {
-  hombre: "Dennis",
-  mujer: "Claire",
+  hombre: EDGE_TTS_VOICES.hombre,
+  mujer: EDGE_TTS_VOICES.mujer,
 };
 
 // Catálogo de SFX (mapeo label -> ruta)
@@ -132,14 +133,14 @@ export async function POST(req: Request) {
     let natureVideoUrl = "";
 
     if (isVersiculo) {
-      // --- VERSÍCULO: extraer datos y sintetizar audio con Aura-2 ---
+      // --- VERSÍCULO: extraer datos y sintetizar audio con edge-tts ---
       verseText = (plan as any).verseReference ? (plan as any).verseText || "" : "";
       verseReference = (plan as any).verseReference || "";
       reflection = (plan as any).scenes?.[0]?.reflection || (plan as any).fullNarration || "";
 
-      await synthesizeCloudflareTTS({
+      await synthesizeEdgeTTS({
         text: plan.fullNarration,
-        category: "biblica",
+        voice: "narrador",
         outputPath: publicToDisk(audioPublicPath),
       });
       audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
@@ -148,7 +149,7 @@ export async function POST(req: Request) {
       const pexelVideo = await fetchNatureVideo();
       natureVideoUrl = pexelVideo.url;
     } else if (isMoraleja) {
-      // --- MORALEJA: sintetizar cada diálogo por separado con Inworld ---
+      // --- MORALEJA: sintetizar cada diálogo por separado con edge-tts ---
       const sceneAudioPaths: string[] = [];
 
       for (let i = 0; i < plan.scenes.length; i++) {
@@ -159,13 +160,12 @@ export async function POST(req: Request) {
 
         if (scenePlan.dialogues && scenePlan.dialogues.length > 0) {
           for (const d of scenePlan.dialogues) {
-            const voiceId = VOICE_MAP[d.gender] || "Dennis";
+            const voice = VOICE_MAP[d.gender] || EDGE_TTS_VOICES.hombre;
             const dialoguePath = `/assets/audio/${projectId}_scene${i}_${d.character.toLowerCase().replace(/\s+/g, "_")}.mp3`;
 
-            const result = await synthesizeInworld({
+            const result = await synthesizeEdgeTTS({
               text: d.line,
-              voiceId,
-              speed,
+              voice,
               outputPath: publicToDisk(dialoguePath),
             });
 
@@ -184,10 +184,9 @@ export async function POST(req: Request) {
           }
         } else {
           const fallbackPath = `/assets/audio/${projectId}_scene${i}_narration.mp3`;
-          const result = await synthesizeInworld({
+          const result = await synthesizeEdgeTTS({
             text: scenePlan.narration,
-            voiceId: "Dennis",
-            speed,
+            voice: EDGE_TTS_VOICES.hombre,
             outputPath: publicToDisk(fallbackPath),
           });
           scenePaths.push(fallbackPath);
@@ -227,10 +226,10 @@ export async function POST(req: Request) {
         globalCursor += dur;
       }
     } else {
-      // --- BÍBLICA: sintetizar narración completa con Aura-2 Español ---
-      await synthesizeCloudflareTTS({
+      // --- BÍBLICA: sintetizar narración completa con edge-tts ---
+      await synthesizeEdgeTTS({
         text: plan.fullNarration,
-        category: "biblica",
+        voice: "narrador",
         outputPath: publicToDisk(audioPublicPath),
       });
       audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
@@ -298,7 +297,7 @@ export async function POST(req: Request) {
         theme: category,
         audioConfig: {
           script: plan.fullNarration,
-          voice: "Aura-2",
+          voice: "edge-tts",
           format: "mp3",
           speed,
           localPath: audioPublicPath,
@@ -331,7 +330,8 @@ export async function POST(req: Request) {
       // --- BÍBLICA / MORALEJA: imágenes Flux + escenas ---
       const scenes: VisualScene[] = distributeScenesFromPlan(
         audioDurationSec,
-        plan.scenes
+        plan.scenes,
+        isMoraleja ? "moraleja" : "biblica"
       ).map((s, i) => {
         const planScene = plan.scenes[i];
         const animations: VisualScene["animationSettings"]["motion"][] = [
@@ -375,7 +375,7 @@ export async function POST(req: Request) {
         popisSubtitles,
         audioPublicPath,
         audioDurationSec,
-        { title: plan.title, theme: category },
+        { title: plan.title, theme: category, category },
         isMoraleja ? audioClips : undefined,
         musicPath,
         channelName
@@ -405,7 +405,7 @@ export async function POST(req: Request) {
         theme: category,
         audioConfig: {
           script: plan.fullNarration,
-          voice: isMoraleja ? "Inworld" : "Aura-2",
+          voice: "edge-tts",
           format: "mp3",
           speed,
           localPath: audioPublicPath,
@@ -436,6 +436,28 @@ export async function POST(req: Request) {
         audioClips: audioClips.length,
       };
     }
+
+    // ==================================================================
+    //  4) GUARDAR EN HISTORIAL
+    // ==================================================================
+    const session = await getServerSession(authOptions);
+    const userEmail = session?.user?.email ?? undefined;
+
+    await addToHistory(
+      {
+        id: projectId,
+        title: plan.title,
+        category,
+        createdAt,
+        durationSec: audioDurationSec,
+        scenes: project.visualScenes?.length ?? 0,
+        subtitles: popisSubtitles.length,
+        remoteKey: "",
+        b2Url: "",
+        localPath: audioPublicPath,
+      },
+      userEmail
+    );
 
     return NextResponse.json({ ok: true, project, stats });
   } catch (err: any) {

@@ -51,6 +51,12 @@ export async function transcribeDeepgram({
     throw new Error(`Deepgram ${res.status}: ${errText}`);
   }
 
+  const resContentType = res.headers.get("content-type") ?? "";
+  if (!resContentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Deepgram devolvió respuesta no-JSON (${resContentType}): ${text.slice(0, 200)}`);
+  }
+
   const json: any = await res.json();
   const channel = json?.results?.channels?.[0];
   const alternatives = channel?.alternatives?.[0];

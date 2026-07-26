@@ -103,7 +103,9 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, category, speed, channelName }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no-JSON del servidor: ${text.slice(0, 200)}`); }
       if (!res.ok || !data.ok) throw new Error(data.error || "Pipeline falló.");
 
       setProject(data.project);
@@ -136,16 +138,16 @@ export default function StudioPage() {
           compositionId: project.remotionPlayerConfig.compositionName,
         }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no-JSON del servidor: ${text.slice(0, 200)}`); }
       if (!res.ok || !data.ok) throw new Error(data.error || "Render falló.");
 
-      setVideoPath(data.videoPath);
-      setStatusMsg(`✅ MP4 listo: ${data.frames} frames @ ${data.fps}fps`);
+      setVideoPath(`/assets/videos/${data.videoId}.mp4`);
+      setStatusMsg(`✅ Render enviado. Puede tardar ~${Math.ceil((project?.audioConfig.durationSec ?? 30) / 15)} min.`);
       setPhase("done");
 
-      if (data.b2Uploaded) {
-        fetchHistory();
-      }
+      fetchHistory();
     } catch (e: any) {
       setError(e?.message ?? "Error de render");
       setPhase("error");

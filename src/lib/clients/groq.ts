@@ -37,6 +37,49 @@ export interface GroqPlanParams {
 const DEFAULT_MODEL =
   process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function groqFetch(body: object, attempt = 1): Promise<any> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("Falta GROQ_API_KEY en el entorno.");
+
+  const res = await fetch(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) {
+      const delay = Math.min(1000 * 2 ** attempt, 15000);
+      console.warn(`[Groq] error ${res.status}, retry ${attempt} en ${delay}ms`);
+      await sleep(delay);
+      return groqFetch(body, attempt + 1);
+    }
+
+    throw new Error(`Groq ${res.status}: ${errText}`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Groq devolvió respuesta no-JSON (${contentType}): ${text.slice(0, 200)}`);
+  }
+
+  const json: any = await res.json();
+  return json;
+}
+
 /**
  * Pide a Groq un plan completo según la categoría.
  * - BÍBLICA: narración épica con escenas visuales.
@@ -47,9 +90,6 @@ export async function planBiblicalVideo({
   language = "es",
   category = "biblica",
 }: GroqPlanParams): Promise<GroqPlanResult> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error("Falta GROQ_API_KEY en el entorno.");
-
   const isMoraleja = category === "moraleja";
 
   const systemPrompt = isMoraleja
@@ -113,32 +153,15 @@ FORMATO DE SALIDA:
   ]
 }`;
 
-  const res = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        temperature: 0.7,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Tema del video: ${topic}` },
-        ],
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq ${res.status}: ${errText}`);
-  }
-
-  const json: any = await res.json();
+  const json: any = await groqFetch({
+    model: DEFAULT_MODEL,
+    temperature: 0.7,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Tema del video: ${topic}` },
+    ],
+  });
   const content: string = json?.choices?.[0]?.message?.content ?? "";
   if (!content) throw new Error("Groq: respuesta vacía.");
 
@@ -192,9 +215,6 @@ export async function planVersiculo({
   topic?: string;
   language?: string;
 }): Promise<GroqPlanResult & { verseReference: string }> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error("Falta GROQ_API_KEY en el entorno.");
-
   const systemPrompt = `Eres un experto en la Biblia que crea videos cortos verticales (9:16) con versículos y reflexiones.
 
 REGLAS ESTRICTAS:
@@ -235,32 +255,15 @@ FORMATO DE SALIDA:
     ? `Tema o versículo sugerido: ${topic}`
     : "Elige un versículo bíblico impactante y escribe una reflexión edificante.";
 
-  const res = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
-        temperature: 0.7,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq ${res.status}: ${errText}`);
-  }
-
-  const json: any = await res.json();
+  const json: any = await groqFetch({
+    model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+    temperature: 0.7,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+  });
   const content: string = json?.choices?.[0]?.message?.content ?? "";
   if (!content) throw new Error("Groq: respuesta vacía.");
 

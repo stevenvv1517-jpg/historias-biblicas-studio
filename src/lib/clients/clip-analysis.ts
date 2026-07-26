@@ -86,6 +86,12 @@ FORMATO DE SALIDA:
     throw new Error(`Groq análisis ${res.status}: ${errText}`);
   }
 
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Groq análisis devolvió respuesta no-JSON (${ct}): ${text.slice(0, 200)}`);
+  }
+
   const json: any = await res.json();
   const content: string = json?.choices?.[0]?.message?.content ?? "";
   if (!content) throw new Error("Groq: respuesta vacía en análisis emocional.");

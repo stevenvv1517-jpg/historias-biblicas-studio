@@ -39,7 +39,11 @@ function getAuth() {
   return { token, accountId };
 }
 
-async function cloudflareFetch(model: string, body: any): Promise<Buffer> {
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function cloudflareFetch(model: string, body: any, attempt = 1): Promise<Buffer> {
   const { token, accountId } = getAuth();
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
 
@@ -54,7 +58,17 @@ async function cloudflareFetch(model: string, body: any): Promise<Buffer> {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Cloudflare ${model} ${res.status}: ${errText}`);
+    const err = new Error(`Cloudflare ${model} ${res.status}: ${errText}`) as any;
+    err.status = res.status;
+
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) {
+      const delay = Math.min(1000 * 2 ** attempt, 10000);
+      console.warn(`[CF] error ${res.status} (${model}), retry ${attempt} en ${delay}ms`);
+      await sleep(delay);
+      return cloudflareFetch(model, body, attempt + 1);
+    }
+
+    throw err;
   }
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -78,13 +92,12 @@ export async function generateFluxImage({
   outputPath,
 }: FluxGenerateParams): Promise<FluxGenerateResult> {
   const model =
-    process.env.CLOUDFLARE_FLUX_MODEL ?? "@cf/black-forest-labs/flux-2-flex";
+    process.env.CLOUDFLARE_FLUX_MODEL ?? "@cf/black-forest-labs/flux-1-schnell";
 
   const buf = await cloudflareFetch(model, {
     prompt,
-    guidance: 7,
-    num_inference_steps: 16,
-    safety_tolerance: 5,
+    steps: 4,
+    seed: Math.floor(Math.random() * 2147483647),
   });
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });

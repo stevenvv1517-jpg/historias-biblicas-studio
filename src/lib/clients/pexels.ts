@@ -39,6 +39,12 @@ export async function fetchNatureVideo(): Promise<PexelsVideo> {
     throw new Error(`Pexels ${res.status}: ${err}`);
   }
 
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Pexels devolvió respuesta no-JSON (${contentType}): ${text.slice(0, 200)}`);
+  }
+
   const data: any = await res.json();
   const videos: any[] = data?.videos ?? [];
 
