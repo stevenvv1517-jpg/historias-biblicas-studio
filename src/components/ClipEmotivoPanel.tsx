@@ -33,11 +33,18 @@ export const ClipEmotivoPanel: React.FC = () => {
     : null;
 
   // ---------- Handlers de archivo ----------
+  const MAX_FILE_MB = 10;
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
+    if (f && f.size > MAX_FILE_MB * 1024 * 1024) {
+      setError(`El archivo pesa ${(f.size / 1024 / 1024).toFixed(1)} MB. Máximo ${MAX_FILE_MB} MB.`);
+      setSelectedFile(null);
+      return;
+    }
     setSelectedFile(f);
     setProject(null);
     setVideoPath("");
+    setError("");
   }
 
   // ---------- PROCESAR ----------

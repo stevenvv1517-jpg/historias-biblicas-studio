@@ -79,7 +79,9 @@ export default function StudioPage() {
   const fetchHistory = useCallback(async () => {
     try {
       const res = await fetch("/api/history");
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { return; }
       if (data.ok) setHistory(data.history);
     } catch {}
   }, []);

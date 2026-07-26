@@ -35,7 +35,9 @@ export default function AdminPage() {
           else setError("Error al cargar");
           return;
         }
-        const data = await res.json();
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { setError("Respuesta no-JSON del servidor"); return; }
         setStats(data);
       } catch {
         setError("Error de conexión");
