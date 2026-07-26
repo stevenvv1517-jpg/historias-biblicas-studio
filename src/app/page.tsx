@@ -95,7 +95,7 @@ export default function StudioPage() {
   async function handleGenerate() {
     setPhase("generating");
     setError("");
-    setStatusMsg("Generado… espere unos minutos");
+    setStatusMsg("Enviando pipeline a Trigger.dev…");
     setProject(null);
     setVideoPath("");
 
@@ -110,14 +110,44 @@ export default function StudioPage() {
       try { data = JSON.parse(text); } catch { throw new Error(`Respuesta no-JSON del servidor: ${text.slice(0, 200)}`); }
       if (!res.ok || !data.ok) throw new Error(data.error || "Pipeline falló.");
 
-      setProject(data.project);
-      const extra = data.stats.dialoguesTotal
-        ? ` · ${data.stats.dialoguesTotal} diálogos`
-        : "";
-      setStatusMsg(
-        `✅ "${data.stats.title}" · ${data.stats.scenes} escenas · ${data.stats.subtitles} subtítulos · ${data.stats.durationSec}s${extra}`
-      );
-      setPhase("done");
+      const videoId = data.videoId;
+      setStatusMsg("Pipeline enviado. Procesando…");
+
+      const pollInterval = 3000;
+      const maxPolls = 120;
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((r) => setTimeout(r, pollInterval));
+        try {
+          const statusRes = await fetch(`/api/pipeline-status/${videoId}`);
+          const statusText = await statusRes.text();
+          let statusData: any;
+          try { statusData = JSON.parse(statusText); } catch { continue; }
+
+          if (statusData.status === "done" && statusData.project) {
+            setProject(statusData.project);
+            const extra = statusData.stats?.dialoguesTotal
+              ? ` · ${statusData.stats.dialoguesTotal} diálogos`
+              : "";
+            setStatusMsg(
+              `✅ "${statusData.stats?.title}" · ${statusData.stats?.scenes ?? 0} escenas · ${statusData.stats?.subtitles ?? 0} subtítulos · ${statusData.stats?.durationSec ?? 0}s${extra}`
+            );
+            setPhase("done");
+            fetchHistory();
+            return;
+          }
+
+          if (statusData.status === "failed") {
+            throw new Error(statusData.error || "Pipeline falló en Trigger.dev");
+          }
+
+          const elapsed = Math.round(((i + 1) * pollInterval) / 1000);
+          setStatusMsg(`⏳ Procesando… (${elapsed}s)`);
+        } catch (pollErr: any) {
+          if (pollErr.message?.includes("Pipeline falló")) throw pollErr;
+        }
+      }
+
+      throw new Error("Tiempo de espera agotado (6 min). El pipeline puede seguir corriendo.");
     } catch (e: any) {
       setError(e?.message ?? "Error desconocido");
       setPhase("error");

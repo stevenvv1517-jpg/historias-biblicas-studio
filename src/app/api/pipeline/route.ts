@@ -1,86 +1,16 @@
 import { NextResponse } from "next/server";
-import {
-  buildPopisSubtitles,
-  distributeScenesFromPlan,
-  buildInputProps,
-  generateProjectId,
-  secondsToFrames,
-  FPS,
-  VIDEO_WIDTH,
-  VIDEO_HEIGHT,
-} from "@/lib/pipeline";
-import type {
-  VideoProject,
-  RemotionPlayerConfig,
-  RenderConfig as RConfig,
-  VisualScene,
-  AudioFX,
-  DialogueBlock,
-  VideoCategory,
-} from "@/lib/types";
-import { synthesizeEdgeTTS, EDGE_TTS_VOICES } from "@/lib/clients/edge-tts";
-import { transcribeDeepgram } from "@/lib/clients/deepgram";
-import { generateFluxImage } from "@/lib/clients/cloudflare";
-import { planBiblicalVideo, planVersiculo } from "@/lib/clients/groq";
-import { fetchNatureVideo } from "@/lib/clients/pexels";
-import { publicToDisk } from "@/lib/paths";
-import { concatenateMp3s, getMp3Duration } from "@/lib/audio";
-import { listMusicFiles } from "@/lib/video-utils";
-import { addToHistory } from "@/lib/history";
+import { generateProjectId } from "@/lib/pipeline";
+import type { VideoCategory } from "@/lib/types";
+import { runPipelineTask } from "../../../../trigger/pipeline-task";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-// Forzamos runtime Node para poder usar fs y fetch nativo.
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 min: las llamadas a IA tardan.
-
-// Voces edge-tts: Elvira para bíblicas, voces por género para moralejas
-const VOICE_MAP: Record<"hombre" | "mujer", string> = {
-  hombre: EDGE_TTS_VOICES.hombre,
-  mujer: EDGE_TTS_VOICES.mujer,
-};
-
-// Catálogo de SFX (mapeo label -> ruta)
-const SFX_LABEL_MAP: Record<string, string> = {
-  trueno: "/assets/sfx/thunder.mp3",
-  viento: "/assets/sfx/wind.mp3",
-  multitud: "/assets/sfx/crowd.mp3",
-  agua: "/assets/sfx/water.mp3",
-  coro: "/assets/sfx/choir.mp3",
-  campana: "/assets/sfx/bell.mp3",
-  lluvia: "/assets/sfx/thunder.mp3",
-  tormenta: "/assets/sfx/thunder.mp3",
-  susurro: "/assets/sfx/wind.mp3",
-  pasos: "/assets/sfx/crowd.mp3",
-  murmullo: "/assets/sfx/crowd.mp3",
-  risa: "/assets/sfx/crowd.mp3",
-  llanto: "/assets/sfx/water.mp3",
-  silencio: "",
-};
-
-function resolveSfxPath(label: string): string {
-  const key = label.toLowerCase().trim();
-  return SFX_LABEL_MAP[key] || "";
-}
-
-// ============================================================
-//  POST /api/pipeline
-//  Orquesta el flujo completo según categoría:
-//   0. Groq    -> título + guion + escenas visuales (+ diálogos si MORALEJA)
-//   1. LMNT    -> audio mp3 (único o múltiple por diálogo) + duración
-//   2. Deepgram -> palabras temporizadas -> subtítulos Popis
-//   3. Cloudflare Flux -> una imagen por escena
-//   4. Animate Flux     -> animación sutil de cada imagen
-//   5. FX_SYNC          -> efectos de sonido sincronizados
-//   6. Ensambla el VideoProject con remotion_player_config
-//
-//  Body: { topic, category?, voice?, sceneCount?, speed? }
-// ============================================================
+export const maxDuration = 30;
 
 interface PipelineBody {
   topic: string;
   category?: VideoCategory;
-  voice?: string;
   speed?: number;
   channelName?: string;
 }
@@ -93,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { topic, category = "biblica", voice, speed = 1, channelName: bodyChannelName } = body;
+  const { topic, category = "biblica", speed = 1, channelName } = body;
 
   if (!topic || typeof topic !== "string" || topic.trim().length < 3) {
     return NextResponse.json(
@@ -102,368 +32,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const isMoraleja = category === "moraleja";
-  const isVersiculo = category === "versiculo";
-  const projectId = generateProjectId();
-  const createdAt = new Date().toISOString();
+  const session = await getServerSession(authOptions);
+  const userEmail = session?.user?.email ?? undefined;
+  const videoId = `vid_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
   try {
-    // ==================================================================
-    //  0) PLAN (Groq)
-    // ==================================================================
-    const plan = isVersiculo
-      ? await planVersiculo({ topic })
-      : await planBiblicalVideo({ topic, category });
-    const totalDurationSec = 0; // se calcula tras audio
-
-    // ==================================================================
-    //  1) AUDIO (Cloudflare TTS) + concatenación
-    //   BÍBLICA  → Deepgram Aura-2 Español
-    //   MORALEJA → Inworld TTS 2 (voces por género)
-    //   VERSÍCULO → Aura-2 Español
-    // ==================================================================
-    let audioPublicPath = `/assets/audio/${projectId}.mp3`;
-    let audioDurationSec = 0;
-    let audioClips: { path: string; startSec: number; durationSec: number }[] = [];
-    let dialogues: DialogueBlock[][] = [];
-    // Para VERSÍCULO: datos adicionales
-    let verseText = "";
-    let verseReference = "";
-    let reflection = "";
-    let natureVideoUrl = "";
-
-    if (isVersiculo) {
-      // --- VERSÍCULO: extraer datos y sintetizar audio con edge-tts ---
-      verseText = (plan as any).verseReference ? (plan as any).verseText || "" : "";
-      verseReference = (plan as any).verseReference || "";
-      reflection = (plan as any).scenes?.[0]?.reflection || (plan as any).fullNarration || "";
-
-      await synthesizeEdgeTTS({
-        text: plan.fullNarration,
-        voice: "narrador",
-        outputPath: publicToDisk(audioPublicPath),
-      });
-      audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
-
-      // Buscar video de naturaleza en Pexels
-      const pexelVideo = await fetchNatureVideo();
-      natureVideoUrl = pexelVideo.url;
-    } else if (isMoraleja) {
-      // --- MORALEJA: sintetizar cada diálogo por separado con edge-tts ---
-      const sceneAudioPaths: string[] = [];
-
-      for (let i = 0; i < plan.scenes.length; i++) {
-        const scenePlan = plan.scenes[i];
-        const sceneDialogueBlocks: DialogueBlock[] = [];
-        const scenePaths: string[] = [];
-        let sceneCursor = 0;
-
-        if (scenePlan.dialogues && scenePlan.dialogues.length > 0) {
-          for (const d of scenePlan.dialogues) {
-            const voice = VOICE_MAP[d.gender] || EDGE_TTS_VOICES.hombre;
-            const dialoguePath = `/assets/audio/${projectId}_scene${i}_${d.character.toLowerCase().replace(/\s+/g, "_")}.mp3`;
-
-            const result = await synthesizeEdgeTTS({
-              text: d.line,
-              voice,
-              outputPath: publicToDisk(dialoguePath),
-            });
-
-            const block: DialogueBlock = {
-              character: d.character,
-              gender: d.gender,
-              line: d.line,
-              localPath: dialoguePath,
-              durationSec: result.durationSec,
-              startOffsetSec: sceneCursor,
-              endOffsetSec: sceneCursor + result.durationSec,
-            };
-            sceneDialogueBlocks.push(block);
-            scenePaths.push(dialoguePath);
-            sceneCursor += result.durationSec;
-          }
-        } else {
-          const fallbackPath = `/assets/audio/${projectId}_scene${i}_narration.mp3`;
-          const result = await synthesizeEdgeTTS({
-            text: scenePlan.narration,
-            voice: EDGE_TTS_VOICES.hombre,
-            outputPath: publicToDisk(fallbackPath),
-          });
-          scenePaths.push(fallbackPath);
-        }
-
-        const sceneAudioPath = `/assets/audio/${projectId}_scene${i}_combined.mp3`;
-        const concatResult = await concatenateMp3s(
-          scenePaths.map((p) => ({ path: p })),
-          sceneAudioPath
-        );
-        sceneAudioPaths.push(sceneAudioPath);
-
-        for (const chunk of concatResult.chunks) {
-          audioClips.push({
-            path: chunk.path,
-            startSec: chunk.startSec,
-            durationSec: chunk.durationSec,
-          });
-        }
-
-        dialogues.push(sceneDialogueBlocks);
-      }
-
-      const finalAudioPath = `/assets/audio/${projectId}_final.mp3`;
-      const finalConcat = await concatenateMp3s(
-        sceneAudioPaths.map((p) => ({ path: p })),
-        finalAudioPath
-      );
-      audioPublicPath = finalAudioPath;
-      audioDurationSec = finalConcat.chunks.reduce((sum, c) => sum + c.durationSec, 0);
-
-      let globalCursor = 0;
-      audioClips = [];
-      for (const scenePath of sceneAudioPaths) {
-        const dur = await getMp3Duration(publicToDisk(scenePath));
-        audioClips.push({ path: scenePath, startSec: globalCursor, durationSec: dur });
-        globalCursor += dur;
-      }
-    } else {
-      // --- BÍBLICA: sintetizar narración completa con edge-tts ---
-      await synthesizeEdgeTTS({
-        text: plan.fullNarration,
-        voice: "narrador",
-        outputPath: publicToDisk(audioPublicPath),
-      });
-      audioDurationSec = await getMp3Duration(publicToDisk(audioPublicPath));
-    }
-
-    // ==================================================================
-    //  2) SUBTÍTULOS (Deepgram)
-    // ==================================================================
-    const { words, durationSec: deepgramDuration } = await transcribeDeepgram({
-      audioPath: publicToDisk(audioPublicPath),
-      language: "es",
-      model: "nova-2",
+    await runPipelineTask.trigger({
+      videoId,
+      topic: topic.trim(),
+      category,
+      speed,
+      channelName,
+      userEmail,
     });
-    const popisSubtitles = buildPopisSubtitles(words);
-    audioDurationSec = deepgramDuration || audioDurationSec;
 
-    // ==================================================================
-    //  3) ENSAMBLAR — rama VERSÍCULO vs BÍBLICA/MORALEJA
-    // ==================================================================
-    const musicFiles = await listMusicFiles().catch(() => []);
-    const musicPath = musicFiles.length > 0
-      ? musicFiles[Math.floor(Math.random() * musicFiles.length)]
-      : undefined;
-
-    const channelName = bodyChannelName?.trim() || "";
-
-    let project: VideoProject;
-    let stats: Record<string, any>;
-
-    if (isVersiculo) {
-      // --- VERSÍCULO: sin Flux, con video de naturaleza Pexels + subtítulos ---
-      const versiculoInputProps = {
-        verseText,
-        verseReference,
-        reflection,
-        audioPath: audioPublicPath,
-        videoUrl: natureVideoUrl,
-        musicPath,
-        totalDurationSec: audioDurationSec,
-        channelName,
-        subtitles: popisSubtitles,
-      };
-
-      const remotionPlayerConfig: RemotionPlayerConfig = {
-        compositionName: "VersiculoVideo",
-        durationInFrames: secondsToFrames(audioDurationSec),
-        fps: FPS,
-        width: VIDEO_WIDTH,
-        height: VIDEO_HEIGHT,
-        inputProps: versiculoInputProps as any,
-      };
-
-      const renderConfig: RConfig = {
-        codec: "h264",
-        outputLocation: `/assets/videos/${projectId}.mp4`,
-        imageFormat: "jpeg",
-        crf: 18,
-        audioCodec: "aac",
-      };
-
-      project = {
-        id: projectId,
-        createdAt,
-        category,
-        theme: category,
-        audioConfig: {
-          script: plan.fullNarration,
-          voice: "edge-tts",
-          format: "mp3",
-          speed,
-          localPath: audioPublicPath,
-          durationSec: audioDurationSec,
-        },
-        subtitlesConfig: {
-          audioPath: audioPublicPath,
-          model: "nova-2",
-          language: "es",
-          smart_format: true,
-          type: "popis",
-        },
-        visualScenes: [],
-        remotionPlayerConfig,
-        renderConfig,
-      };
-
-      stats = {
-        topic,
-        title: plan.title,
-        category,
-        durationSec: audioDurationSec,
-        scenes: 0,
-        subtitles: popisSubtitles.length,
-        words: words.length,
-        imagesGenerated: 0,
-        verseReference,
-      };
-    } else {
-      // --- BÍBLICA / MORALEJA: imágenes Flux + escenas ---
-      const scenes: VisualScene[] = distributeScenesFromPlan(
-        audioDurationSec,
-        plan.scenes,
-        isMoraleja ? "moraleja" : "biblica"
-      ).map((s, i) => {
-        const planScene = plan.scenes[i];
-        const animations: VisualScene["animationSettings"]["motion"][] = [
-          "ken-burns-in", "pan-right", "ken-burns-out", "pan-left", "static",
-        ];
-
-        const groqAnim = planScene.animation?.toLowerCase() || "";
-        let motion: VisualScene["animationSettings"]["motion"] = animations[i % animations.length];
-        if (groqAnim.includes("zoom") || groqAnim.includes("close")) motion = "ken-burns-in";
-        else if (groqAnim.includes("pan")) motion = groqAnim.includes("left") ? "pan-left" : "pan-right";
-        else if (groqAnim.includes("breath") || groqAnim.includes("blink") || groqAnim.includes("head")) motion = "static";
-
-        const audioFx: AudioFX[] = (planScene.sfx || []).map((sfxItem, fi) => ({
-          id: `fx_${i}_${fi}`,
-          at: Number(sfxItem.at) || 0,
-          path: resolveSfxPath(sfxItem.label),
-          volume: 0.5,
-          label: sfxItem.label,
-        })).filter((fx) => fx.path.length > 0);
-
-        return {
-          ...s,
-          promptAnimation: planScene.animation || "slow zoom",
-          animationSettings: { motion, intensity: 0.35 },
-          audioFx,
-          dialogues: isMoraleja ? (dialogues[i] || []) : undefined,
-        };
-      });
-
-      const fluxResults = await Promise.all(
-        scenes.map((scene) =>
-          generateFluxImage({
-            prompt: scene.promptFlux,
-            outputPath: publicToDisk(scene.localPath),
-          })
-        )
-      );
-
-      const inputProps = buildInputProps(
-        scenes,
-        popisSubtitles,
-        audioPublicPath,
-        audioDurationSec,
-        { title: plan.title, theme: category, category },
-        isMoraleja ? audioClips : undefined,
-        musicPath,
-        channelName
-      );
-
-      const remotionPlayerConfig: RemotionPlayerConfig = {
-        compositionName: "MainVideo",
-        durationInFrames: secondsToFrames(audioDurationSec),
-        fps: FPS,
-        width: VIDEO_WIDTH,
-        height: VIDEO_HEIGHT,
-        inputProps,
-      };
-
-      const renderConfig: RConfig = {
-        codec: "h264",
-        outputLocation: `/assets/videos/${projectId}.mp4`,
-        imageFormat: "jpeg",
-        crf: 18,
-        audioCodec: "aac",
-      };
-
-      project = {
-        id: projectId,
-        createdAt,
-        category,
-        theme: category,
-        audioConfig: {
-          script: plan.fullNarration,
-          voice: "edge-tts",
-          format: "mp3",
-          speed,
-          localPath: audioPublicPath,
-          durationSec: audioDurationSec,
-        },
-        subtitlesConfig: {
-          audioPath: audioPublicPath,
-          model: "nova-2",
-          language: "es",
-          smart_format: true,
-          type: "popis",
-        },
-        visualScenes: scenes,
-        remotionPlayerConfig,
-        renderConfig,
-      };
-
-      stats = {
-        topic,
-        title: plan.title,
-        category,
-        durationSec: audioDurationSec,
-        scenes: scenes.length,
-        subtitles: popisSubtitles.length,
-        words: words.length,
-        imagesGenerated: fluxResults.length,
-        dialoguesTotal: isMoraleja ? dialogues.flat().length : 0,
-        audioClips: audioClips.length,
-      };
-    }
-
-    // ==================================================================
-    //  4) GUARDAR EN HISTORIAL
-    // ==================================================================
-    const session = await getServerSession(authOptions);
-    const userEmail = session?.user?.email ?? undefined;
-
-    await addToHistory(
-      {
-        id: projectId,
-        title: plan.title,
-        category,
-        createdAt,
-        durationSec: audioDurationSec,
-        scenes: project.visualScenes?.length ?? 0,
-        subtitles: popisSubtitles.length,
-        remoteKey: "",
-        b2Url: "",
-        localPath: audioPublicPath,
-      },
-      userEmail
-    );
-
-    return NextResponse.json({ ok: true, project, stats });
+    return NextResponse.json({ ok: true, videoId, message: "Pipeline enviado a Trigger.dev" });
   } catch (err: any) {
-    console.error("[/api/pipeline] error:", err);
+    console.error("[/api/pipeline] error triggering task:", err);
     return NextResponse.json(
-      { error: err?.message ?? "Error desconocido en el pipeline." },
+      { error: err?.message ?? "Error al lanzar el pipeline." },
       { status: 500 }
     );
   }
